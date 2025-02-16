@@ -1,11 +1,11 @@
-﻿# OMNI - Overlay Map & Navigation Interface
+# OMNI - Overlay Map & Navigation Interface
 
 An advanced Windows Forms application that provides real-time coordinate tracking and mapping interface for Pantheon: Rise of the Fallen.
 
-![Main Interface](images/mainform.png)
+![Main Interface](https://raw.githubusercontent.com/Simplistik78/OMNI/master/Images/mainform.png)
 *Main Interface with full map view and capture controls*
 
-![Compact Mode](images/compact.png)
+![Compact Mode](https://raw.githubusercontent.com/Simplistik78/OMNI/master/Images/compact.png)
 *Compact mode for minimal screen space usage*
 
 ## Overview
@@ -118,6 +118,6 @@ OMNI is provided as-is, without any warranty or guarantee of functionality. This
 ## Acknowledgments
 
 - Pantheon: Rise of the Fallen community
-- Shalazam.info for map services
+- Shalazam.info for map services and the amazing map work they have done , none of this could be possible without them.
 - Tesseract OCR project
 - Microsoft WebView2 team
