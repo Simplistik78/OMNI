@@ -1,0 +1,794 @@
+﻿using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using Microsoft.Web.WebView2.WinForms;
+using OMNI.Services.OCR;
+using OMNI.Services;
+using OMNI.Services.WebView;
+using System.Diagnostics;
+using System.Threading;
+
+namespace OMNI.Forms;
+
+public partial class CompactUIForm : Form, ICaptureForm
+{
+    private readonly IOCRService _ocrService;
+    private readonly SettingsService _settingsService;
+    private readonly IMapViewerService _mapViewerService;
+    private readonly WebView2 _webView;
+    private readonly Button _toggleCaptureButton;
+    private readonly Button _positionButton;
+    private readonly Label _statusLabel;
+    private readonly Label _lastCoordinatesLabel;
+    private readonly System.Windows.Forms.Timer _captureTimer;
+    private readonly Panel _controlStrip;
+
+    private readonly NumericUpDown _captureX = new()
+    {
+        Minimum = 0,
+        Maximum = 3000,
+        DecimalPlaces = 0,
+        Increment = 1,
+        Width = 70,
+        Value = 0
+    };
+
+    private readonly NumericUpDown _captureY = new()
+    {
+        Minimum = 0,
+        Maximum = 3000,
+        DecimalPlaces = 0,
+        Increment = 1,
+        Width = 70,
+        Value = 0
+    };
+
+    private readonly NumericUpDown _captureWidth = new()
+    {
+        Minimum = 50,
+        Maximum = 500,
+        DecimalPlaces = 0,
+        Increment = 1,
+        Width = 70,
+        Value = 200
+    };
+
+    private readonly NumericUpDown _captureHeight = new()
+    {
+        Minimum = 20,
+        Maximum = 200,
+        DecimalPlaces = 0,
+        Increment = 1,
+        Width = 70,
+        Value = 30
+    };
+
+    private bool _isCapturing;
+    private bool _isResizing;
+    private Point _dragStartPoint;
+    private ResizeDirection _currentResizeDirection;
+    private bool _disposed;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private System.Threading.Timer? _saveTimer;
+    private readonly object _saveLock = new object();
+    private bool _isSaving;
+    private const int RESIZE_BORDER = 5;
+
+    private enum ResizeDirection
+    {
+        None,
+        Top, Bottom,
+        Left, Right,
+        TopLeft, TopRight,
+        BottomLeft, BottomRight
+    }
+
+    public CompactUIForm(IOCRService ocrService, SettingsService settingsService)
+    {
+        _ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
+        _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+
+        InitializeComponent();
+
+        // Initialize controls
+        _webView = new WebView2();
+        _controlStrip = new Panel();
+        _toggleCaptureButton = new Button();
+        _positionButton = new Button();
+        _statusLabel = new Label();
+        _lastCoordinatesLabel = new Label();
+        _captureTimer = new System.Windows.Forms.Timer();
+
+        // Initialize map service for compact mode
+        _mapViewerService = new MapViewerService(_webView, isCompactMode: true);
+
+        SetupCustomComponents();
+        SetupEventHandlers();
+        LoadSettings();
+
+        // Configure capture timer
+        _captureTimer.Interval = Math.Max(1000, _settingsService.CurrentSettings.CaptureInterval);
+
+        // Subscribe to map service events
+        _mapViewerService.StatusChanged += (s, status) =>
+        {
+            if (_statusLabel.InvokeRequired)
+            {
+                _statusLabel.Invoke(() => _statusLabel.Text = status);
+            }
+            else
+            {
+                _statusLabel.Text = status;
+            }
+            Debug.WriteLine($"Map status: {status}");
+        };
+
+        _mapViewerService.ErrorOccurred += (s, ex) =>
+        {
+            if (_statusLabel.InvokeRequired)
+            {
+                _statusLabel.Invoke(() => _statusLabel.Text = $"Error: {ex.Message}");
+            }
+            else
+            {
+                _statusLabel.Text = $"Error: {ex.Message}";
+            }
+            Debug.WriteLine($"Map error: {ex}");
+        };
+    }
+
+    protected override async void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        try
+        {
+            // Wait for map initialization before proceeding
+            await _mapViewerService.WaitForInitializationAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error initializing WebView2: {ex.Message}\nPlease ensure WebView2 Runtime is installed.",
+                "WebView2 Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private void SetupCustomComponents()
+    {
+        // Form settings
+        this.MinimumSize = new Size(400, 300);
+        this.Size = new Size(600, 450);
+        this.FormBorderStyle = FormBorderStyle.None;
+        this.BackColor = Color.Black;
+        this.Padding = new Padding(1);
+        this.TopMost = true;
+
+        // Control strip setup
+        _controlStrip.Height = 40;
+        _controlStrip.Dock = DockStyle.Top;
+        _controlStrip.BackColor = Color.FromArgb(30, 30, 30);
+        _controlStrip.Padding = new Padding(5);
+
+        // Set up the WebView2 control
+        _webView.Dock = DockStyle.Fill;
+
+        // Add layout panel to manage WebView
+        var contentPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(1),
+            BackColor = Color.FromArgb(30, 30, 30)
+        };
+
+        contentPanel.Controls.Add(_webView);
+
+        // Configure buttons
+        _toggleCaptureButton.Text = "Start Capture";
+        _toggleCaptureButton.Width = 100;
+        _toggleCaptureButton.Height = 30;
+        _toggleCaptureButton.FlatStyle = FlatStyle.Flat;
+        _toggleCaptureButton.BackColor = Color.FromArgb(60, 60, 60);
+        _toggleCaptureButton.ForeColor = Color.White;
+        _toggleCaptureButton.Location = new Point(10, 5);
+
+        _positionButton.Text = "Set Position";
+        _positionButton.Width = 100;
+        _positionButton.Height = 30;
+        _positionButton.FlatStyle = FlatStyle.Flat;
+        _positionButton.BackColor = Color.FromArgb(60, 60, 60);
+        _positionButton.ForeColor = Color.White;
+        _positionButton.Location = new Point(120, 5);
+
+        // Configure status labels
+        _statusLabel.AutoSize = true;
+        _statusLabel.ForeColor = Color.White;
+        _statusLabel.Location = new Point(230, 12);
+        _statusLabel.Text = "Ready";
+
+        _lastCoordinatesLabel.AutoSize = true;
+        _lastCoordinatesLabel.ForeColor = Color.White;
+        _lastCoordinatesLabel.Location = new Point(230, 30);
+        _lastCoordinatesLabel.Text = "No coordinates";
+
+        // Add close button
+        var closeButton = new Button
+        {
+            Text = "×",
+            Size = new Size(30, 30),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(60, 60, 60),
+            ForeColor = Color.White,
+            Location = new Point(_controlStrip.Width - 40, 5),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+
+        // Add controls to control strip
+        _controlStrip.Controls.AddRange(new Control[] {
+            _toggleCaptureButton,
+            _positionButton,
+            _statusLabel,
+            _lastCoordinatesLabel,
+            closeButton
+        });
+
+        // Add controls to form
+        this.Controls.AddRange(new Control[] {
+            contentPanel,
+            _controlStrip
+        });
+
+        // Set up close button handler
+        closeButton.Click += (s, e) => this.Close();
+
+        // Make form draggable via control strip
+        _controlStrip.MouseDown += (s, e) =>
+        {
+            if (e.Button == MouseButtons.Left && !IsResizingEdge(e.Location))
+            {
+                NativeMethods.ReleaseCapture();
+                NativeMethods.SendMessage(Handle, 0xA1, 0x2, 0);
+            }
+        };
+    }
+
+    private void SetupEventHandlers()
+    {
+        // Form movement and size handlers
+        this.LocationChanged += (s, e) =>
+        {
+            if (!this.IsDisposed && this.WindowState == FormWindowState.Normal)
+            {
+                DebouncedSave();
+                Debug.WriteLine($"[MOVE] CompactUI Position Update Queued: {this.Location}");
+            }
+        };
+
+        this.SizeChanged += (s, e) =>
+        {
+            if (!this.IsDisposed && this.WindowState == FormWindowState.Normal)
+            {
+                DebouncedSave();
+                Debug.WriteLine($"[RESIZE] CompactUI Size Update Queued: {this.Size}");
+            }
+        };
+
+        // Capture control value change handlers
+        _captureX.ValueChanged += (s, e) => DebouncedSave();
+        _captureY.ValueChanged += (s, e) => DebouncedSave();
+        _captureWidth.ValueChanged += (s, e) => DebouncedSave();
+        _captureHeight.ValueChanged += (s, e) => DebouncedSave();
+
+        // Button click handlers
+        _toggleCaptureButton.Click += ToggleCaptureButton_Click;
+        _positionButton.Click += PositionButton_Click;
+        _captureTimer.Tick += CaptureTimer_Tick;
+
+        // Form resizing handlers
+        this.MouseDown += Form_MouseDown;
+        this.MouseMove += Form_MouseMove;
+        this.MouseUp += Form_MouseUp;
+    }
+
+    public void StartCapture()
+    {
+        if (!_isCapturing)
+        {
+            _captureTimer.Start();
+            _toggleCaptureButton.Text = "Stop";
+            _statusLabel.Text = "Capturing...";
+            _isCapturing = true;
+            Debug.WriteLine("Capture started");
+        }
+    }
+
+    public void StopCapture()
+    {
+        if (_isCapturing)
+        {
+            _captureTimer.Stop();
+            _toggleCaptureButton.Text = "Start Capture";
+            _statusLabel.Text = "Stopped";
+            _isCapturing = false;
+            Debug.WriteLine("Capture stopped");
+        }
+    }
+
+    private void ToggleCaptureButton_Click(object? sender, EventArgs e)
+    {
+        if (!_isCapturing)
+        {
+            StartCapture();
+        }
+        else
+        {
+            StopCapture();
+        }
+    }
+
+    private void PositionButton_Click(object? sender, EventArgs e)
+    {
+        var overlayForm = new OverlayCaptureForm(bounds =>
+        {
+            try
+            {
+                _captureX.Value = bounds.X;
+                _captureY.Value = bounds.Y;
+                _captureWidth.Value = bounds.Width;
+                _captureHeight.Value = bounds.Height;
+
+                SaveCurrentSettings();
+                _ = PerformCapture();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Failed to update capture bounds: {ex}");
+                _statusLabel.Text = "Failed to set capture area";
+            }
+        });
+
+        // Set initial position from current settings
+        var currentSettings = _settingsService.CurrentSettings;
+        if (Screen.FromPoint(new Point(currentSettings.CaptureX, currentSettings.CaptureY)) != null)
+        {
+            overlayForm.Location = new Point(currentSettings.CaptureX, currentSettings.CaptureY);
+            overlayForm.Size = new Size(currentSettings.CaptureWidth, currentSettings.CaptureHeight);
+        }
+        else
+        {
+            overlayForm.StartPosition = FormStartPosition.CenterScreen;
+            overlayForm.Size = new Size(200, 50);
+        }
+
+        overlayForm.Show();
+    }
+
+    private async void CaptureTimer_Tick(object? sender, EventArgs e)
+    {
+        await PerformCapture();
+    }
+
+    private async Task PerformCapture()
+    {
+        if (this.IsDisposed) return;
+
+        try
+        {
+            var bounds = new Rectangle(
+                (int)_captureX.Value,
+                (int)_captureY.Value,
+                (int)_captureWidth.Value,
+                (int)_captureHeight.Value
+            );
+
+            var screen = Screen.FromPoint(new Point(bounds.X, bounds.Y));
+            if (screen == null)
+            {
+                _statusLabel.Text = "Error: Capture area outside screen bounds";
+                return;
+            }
+
+            if (bounds.Width <= 0 || bounds.Height <= 0 ||
+                bounds.Right > screen.Bounds.Right ||
+                bounds.Bottom > screen.Bounds.Bottom)
+            {
+                _statusLabel.Text = "Error: Invalid capture dimensions";
+                return;
+            }
+
+            using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                try
+                {
+                    graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    graphics.CompositingQuality = CompositingQuality.HighQuality;
+                    graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Screen capture failed: {ex}");
+                    _statusLabel.Text = "Screen capture failed";
+                    return;
+                }
+            }
+
+            var (coordinates, rawText) = await _ocrService.ProcessImageAsync(bitmap);
+
+            if (coordinates != null)
+            {
+                var result = await _mapViewerService.AddMarkerAsync(
+                    coordinates.X,
+                    coordinates.Y,
+                    coordinates.Heading
+                );
+
+                if (result.Contains("Error"))
+                {
+                    _statusLabel.Text = result;
+                    Debug.WriteLine($"Marker placement failed: {result}");
+                }
+                else
+                {
+                    _statusLabel.Text = "Pin set";
+                    Debug.WriteLine($"Marker placed at X:{coordinates.X} Y:{coordinates.Y} H:{coordinates.Heading}");
+                }
+
+                _lastCoordinatesLabel.Text = $"Found: {coordinates}";
+            }
+            else
+            {
+                _statusLabel.Text = "No coordinates found";
+                _lastCoordinatesLabel.Text = $"Failed: {rawText}";
+                Debug.WriteLine($"OCR failed to find coordinates. Raw text: {rawText}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Capture error: {ex}");
+            _statusLabel.Text = $"Error: {ex.Message}";
+        }
+    }
+
+    private void LoadSettings()
+    {
+        var settings = _settingsService.CurrentSettings;
+
+        _captureTimer.Interval = Math.Max(1000, settings.CaptureInterval);
+
+        var screen = Screen.PrimaryScreen;
+        if (screen != null)
+        {
+            _captureX.Maximum = screen.Bounds.Width;
+            _captureY.Maximum = screen.Bounds.Height;
+            _captureWidth.Maximum = screen.Bounds.Width;
+            _captureHeight.Maximum = screen.Bounds.Height;
+
+            _captureX.Value = Math.Max(_captureX.Minimum, Math.Min(_captureX.Maximum, settings.CaptureX));
+            _captureY.Value = Math.Max(_captureY.Minimum, Math.Min(_captureY.Maximum, settings.CaptureY));
+            _captureWidth.Value = Math.Max(_captureWidth.Minimum, Math.Min(_captureWidth.Maximum, settings.CaptureWidth));
+            _captureHeight.Value = Math.Max(_captureHeight.Minimum, Math.Min(_captureHeight.Maximum, settings.CaptureHeight));
+        }
+
+        if (settings.CompactUISize.Width > 0 && settings.CompactUISize.Height > 0)
+        {
+            var width = Math.Max(this.MinimumSize.Width,
+                               Math.Min(screen?.Bounds.Width ?? 1920, settings.CompactUISize.Width));
+            var height = Math.Max(this.MinimumSize.Height,
+                                Math.Min(screen?.Bounds.Height ?? 1080, settings.CompactUISize.Height));
+
+            this.Size = new Size(width, height);
+        }
+
+        if (settings.CompactUILocation != Point.Empty)
+        {
+            var targetScreen = Screen.FromPoint(settings.CompactUILocation);
+            if (targetScreen != null)
+            {
+                var x = Math.Max(targetScreen.WorkingArea.X,
+                               Math.Min(targetScreen.WorkingArea.Right - this.Width,
+                                          settings.CompactUILocation.X));
+                var y = Math.Max(targetScreen.WorkingArea.Y,
+                               Math.Min(targetScreen.WorkingArea.Bottom - this.Height,
+                                          settings.CompactUILocation.Y));
+
+                this.StartPosition = FormStartPosition.Manual;
+                this.Location = new Point(x, y);
+            }
+            else
+            {
+                this.StartPosition = FormStartPosition.CenterScreen;
+            }
+        }
+        else
+        {
+            this.StartPosition = FormStartPosition.CenterScreen;
+        }
+    }
+
+    private void SaveCurrentSettings()
+    {
+        try
+        {
+            var settings = _settingsService.CurrentSettings;
+
+            // Save capture area settings
+            settings.CaptureX = (int)_captureX.Value;
+            settings.CaptureY = (int)_captureY.Value;
+            settings.CaptureWidth = (int)_captureWidth.Value;
+            settings.CaptureHeight = (int)_captureHeight.Value;
+            settings.CaptureInterval = _captureTimer.Interval;
+
+            // Save form position and size
+            if (!this.IsDisposed && this.WindowState == FormWindowState.Normal)
+            {
+                settings.CompactUISize = this.Size;
+                settings.CompactUILocation = this.Location;
+            }
+
+            // Maintain enabled state
+            settings.CompactUIEnabled = true;
+
+            _settingsService.SaveSettings(settings);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ERROR] Failed to save settings: {ex.Message}");
+            _statusLabel.Text = "Failed to save settings";
+        }
+    }
+
+    private void DebouncedSave()
+    {
+        if (_disposed || _isSaving) return;
+
+        lock (_saveLock)
+        {
+            try
+            {
+                _saveTimer?.Dispose();
+
+                if (!_disposed)
+                {
+                    _saveTimer = new System.Threading.Timer(_ =>
+                    {
+                        try
+                        {
+                            if (_disposed) return;
+
+                            _isSaving = true;
+                            if (!IsDisposed && IsHandleCreated)
+                            {
+                                this.BeginInvoke(new Action(() =>
+                                {
+                                    try
+                                    {
+                                        if (!_disposed)
+                                        {
+                                            SaveCurrentSettings();
+                                        }
+                                    }
+                                    finally
+                                    {
+                                        _isSaving = false;
+                                    }
+                                }));
+                            }
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // Ignore disposal exceptions
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Error in save timer callback: {ex}");
+                        }
+                        finally
+                        {
+                            _isSaving = false;
+                        }
+                    }, null, 250, Timeout.Infinite);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error scheduling save: {ex}");
+                _isSaving = false;
+            }
+        }
+    }
+
+    #region Form Resize Handling
+    private bool IsResizingEdge(Point mousePosition)
+    {
+        return GetResizeDirection(mousePosition) != ResizeDirection.None;
+    }
+
+    private ResizeDirection GetResizeDirection(Point mousePosition)
+    {
+        if (mousePosition.Y <= RESIZE_BORDER && mousePosition.X <= RESIZE_BORDER)
+            return ResizeDirection.TopLeft;
+        if (mousePosition.Y <= RESIZE_BORDER && mousePosition.X >= Width - RESIZE_BORDER)
+            return ResizeDirection.TopRight;
+        if (mousePosition.Y >= Height - RESIZE_BORDER && mousePosition.X <= RESIZE_BORDER)
+            return ResizeDirection.BottomLeft;
+        if (mousePosition.Y >= Height - RESIZE_BORDER && mousePosition.X >= Width - RESIZE_BORDER)
+            return ResizeDirection.BottomRight;
+        if (mousePosition.Y <= RESIZE_BORDER)
+            return ResizeDirection.Top;
+        if (mousePosition.Y >= Height - RESIZE_BORDER)
+            return ResizeDirection.Bottom;
+        if (mousePosition.X <= RESIZE_BORDER)
+            return ResizeDirection.Left;
+        if (mousePosition.X >= Width - RESIZE_BORDER)
+            return ResizeDirection.Right;
+        return ResizeDirection.None;
+    }
+
+    private void Form_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _currentResizeDirection = GetResizeDirection(e.Location);
+            if (_currentResizeDirection != ResizeDirection.None)
+            {
+                _isResizing = true;
+            }
+            _dragStartPoint = PointToScreen(e.Location);
+        }
+    }
+
+    private void Form_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (_isResizing)
+        {
+            ResizeForm(e);
+        }
+        else
+        {
+            ResizeDirection direction = GetResizeDirection(e.Location);
+            UpdateCursor(direction);
+        }
+    }
+
+    private void Form_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _isResizing = false;
+            _currentResizeDirection = ResizeDirection.None;
+            SaveCurrentSettings();
+        }
+    }
+
+    private void UpdateCursor(ResizeDirection direction)
+    {
+        this.Cursor = direction switch
+        {
+            ResizeDirection.TopLeft or ResizeDirection.BottomRight => Cursors.SizeNWSE,
+            ResizeDirection.TopRight or ResizeDirection.BottomLeft => Cursors.SizeNESW,
+            ResizeDirection.Left or ResizeDirection.Right => Cursors.SizeWE,
+            ResizeDirection.Top or ResizeDirection.Bottom => Cursors.SizeNS,
+            _ => Cursors.Default
+        };
+    }
+
+    private void ResizeForm(MouseEventArgs e)
+    {
+        Point currentScreenPos = PointToScreen(e.Location);
+        int dx = currentScreenPos.X - _dragStartPoint.X;
+        int dy = currentScreenPos.Y - _dragStartPoint.Y;
+
+        switch (_currentResizeDirection)
+        {
+            case ResizeDirection.Left:
+            case ResizeDirection.TopLeft:
+            case ResizeDirection.BottomLeft:
+                Width = Math.Max(MinimumSize.Width, Width - dx);
+                Location = new Point(Location.X + dx, Location.Y);
+                break;
+            case ResizeDirection.Right:
+            case ResizeDirection.TopRight:
+            case ResizeDirection.BottomRight:
+                Width = Math.Max(MinimumSize.Width, Width + dx);
+                break;
+        }
+
+        switch (_currentResizeDirection)
+        {
+            case ResizeDirection.Top:
+            case ResizeDirection.TopLeft:
+            case ResizeDirection.TopRight:
+                Height = Math.Max(MinimumSize.Height, Height - dy);
+                Location = new Point(Location.X, Location.Y + dy);
+                break;
+            case ResizeDirection.Bottom:
+            case ResizeDirection.BottomLeft:
+            case ResizeDirection.BottomRight:
+                Height = Math.Max(MinimumSize.Height, Height + dy);
+                break;
+        }
+
+        _dragStartPoint = currentScreenPos;
+
+        // Update WebView size safely
+        if (_webView != null && !_webView.IsDisposed && _webView.Parent != null)
+        {
+            var newSize = _webView.Parent.ClientSize;
+            if (newSize.Width > 0 && newSize.Height > 0)
+            {
+                _webView.Size = newSize;
+            }
+        }
+
+        this.Invalidate();
+    }
+    #endregion
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        using var pen = new Pen(Color.FromArgb(60, 60, 60), 1);
+        e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        try
+        {
+            if (!_disposed && !IsDisposed)
+            {
+                StopCapture();
+
+                lock (_saveLock)
+                {
+                    _saveTimer?.Dispose();
+                    _saveTimer = null;
+                }
+
+                // Update settings before form closes
+                if (IsHandleCreated)
+                {
+                    var settings = _settingsService.CurrentSettings;
+                    settings.CompactUIEnabled = false;
+                    _settingsService.SaveSettings(settings);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ERROR] Error during form closing: {ex}");
+        }
+
+        base.OnFormClosing(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_disposed)
+        {
+            _disposed = true;
+            StopCapture();
+            _captureTimer?.Dispose();
+            _cancellationTokenSource?.Dispose();
+            _mapViewerService?.Dispose();
+
+            lock (_saveLock)
+            {
+                _saveTimer?.Dispose();
+            }
+        }
+        base.Dispose(disposing);
+    }
+
+    // Static helper class for native methods
+    internal static class NativeMethods
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool ReleaseCapture();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+    }
+}

@@ -1,0 +1,55 @@
+﻿GNU AFFERO GENERAL PUBLIC LICENSE
+                       Version 3, 19 November 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU Affero General Public License is a free, copyleft license for
+software and other kinds of works, specifically designed to ensure
+cooperation with the community in the case of network server software.
+
+[... standard AGPLv3 text ...]
+
+                     ADDITIONAL TERMS AND CONDITIONS
+
+In accordance with Section 7 of the GNU Affero General Public License, 
+the following additional terms and conditions apply to this software:
+
+1. COMMERCIAL USE PROHIBITION
+
+   Notwithstanding any other provision of this License, you are not permitted
+   to use this software, in whole or in part, for any commercial purpose or
+   in any commercial context. For the purposes of this clause:
+
+   a. "Commercial purpose" means any activity intended for or directed towards
+      commercial advantage or monetary compensation.
+   
+   b. "Commercial context" includes, but is not limited to:
+      - Use by a business or commercial enterprise
+      - Use to provide paid services
+      - Use to generate revenue directly or indirectly
+      - Use in conjunction with paid products or services
+
+2. NOTIFICATION REQUIREMENT
+
+   Any user of this software must prominently display the following notice
+   in any application or service that incorporates or uses this software:
+   "This application includes software developed for Pantheon: Rise of the Fallen
+   coordinate mapping, available at [repository URL]. This software is licensed
+   under the GNU Affero General Public License v3 with additional restrictions."
+
+3. SCOPE AND ENFORCEMENT
+
+   These additional terms are intended to be severable. If any portion of these
+   additional terms is found to be invalid or unenforceable, the remainder
+   shall continue to apply to the maximum extent permitted by law.
+
+For the complete text of the GNU Affero General Public License v3, see:
+<https://www.gnu.org/licenses/agpl-3.0.html>
+
+For questions about this license, contact:
+Project: OMNI
+GitHub: https://github.com/Simplistik78/OMNI

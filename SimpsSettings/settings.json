@@ -1,0 +1,22 @@
+{
+  "CaptureX": 1,
+  "CaptureY": 1012,
+  "CaptureWidth": 350,
+  "CaptureHeight": 39,
+  "CaptureInterval": 1000,
+  "MainFormSize": {
+    "Width": 1936,
+    "Height": 1048
+  },
+  "MainFormLocation": {
+    "X": 1920
+  },
+  "CompactUILocation": {
+    "X": 1513,
+    "Y": 372
+  },
+  "CompactUISize": {
+    "Width": 400,
+    "Height": 300
+  }
+}
