@@ -2,13 +2,20 @@
 
 An advanced Windows Forms application that provides real-time coordinate tracking and mapping interface for Pantheon: Rise of the Fallen.
 
-![Main Interface](https://raw.githubusercontent.com/Simplistik78/OMNI/master/Images/mainform.png)
+## Main Interface
+
+![image](https://github.com/user-attachments/assets/51d7e96d-af62-47b8-a7b5-beec5fd1dbac)
+
 *Main Interface with full map view and capture controls*
 
-![Compact Mode](https://raw.githubusercontent.com/Simplistik78/OMNI/master/Images/compact.png)
+## Compact Mode
+
+![image](https://github.com/user-attachments/assets/d52d7b4c-9f2d-4eea-99e3-4c25e6258183)
+
 *Compact mode for minimal screen space usage*
 
 ## Overview
+
 
 OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enhance the gaming experience in Pantheon: Rise of the Fallen by providing real-time coordinate tracking and visualization. It captures in-game coordinates and displays them on an interactive map interface, allowing players to better navigate the world.
 
