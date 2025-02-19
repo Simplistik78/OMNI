@@ -4,26 +4,26 @@ An advanced Windows Forms application that provides real-time coordinate trackin
 
 ## Main Interface
 
-![image](https://github.com/user-attachments/assets/51d7e96d-af62-47b8-a7b5-beec5fd1dbac)
+![Main Interface](https://raw.githubusercontent.com/Simplistik78/OMNI/master/Images/mainform.png)
 
 *Main Interface with full map view and capture controls*
 
 ## Compact Mode
 
-![image](https://github.com/user-attachments/assets/d52d7b4c-9f2d-4eea-99e3-4c25e6258183)
+![Compact Mode](https://raw.githubusercontent.com/Simplistik78/OMNI/master/Images/compact.png)
 
 *Compact mode for minimal screen space usage*
 
 ## Overview
-
 
 OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enhance the gaming experience in Pantheon: Rise of the Fallen by providing real-time coordinate tracking and visualization. It captures in-game coordinates and displays them on an interactive map interface, allowing players to better navigate the world.
 
 ## Features
 
 - Real-time coordinate capture and mapping
+- Support for multiple maps (World Map, Halnir Cave, Goblin Caves)
 - Interactive map integration with shalazam.info
-- Advanced OCR-based coordinate detection
+- Advanced OCR-based coordinate detection including negative coordinates
 - Configurable capture area with visual positioning
 - Debugging history with last 10 captures
 - Global hotkey support
@@ -54,12 +54,19 @@ OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enha
 ## Usage
 
 ### Main Controls
-
+(Hotkeys Disabled for now)
 - **Start/Stop Capture (F9)**: Begin/end continuous coordinate capture
 - **Single Capture (Ctrl+F10)**: Capture coordinates once
 - **Test Capture Area (Ctrl+T)**: Highlight current capture area
 - **Reset All Arrows (Ctrl+R)**: Clear all markers from map
 - **Enable Compact UI**: Switch to minimal interface mode
+- **Right-click Menu**: Switch between available maps
+
+### Available Maps
+Right-click on either the main form's control panel or the compact UI's title bar to access:
+- World Map (Default)
+- Halnir Cave
+- Goblin Caves
 
 ### Capture Settings
 
@@ -92,13 +99,15 @@ OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enha
 2. Check that coordinate text is clearly visible
 3. Verify text is white on dark background
 4. Use "Test Capture Area" to confirm position
+5. For Halnir Cave, ensure negative coordinates are being captured correctly
 
 ### Map Not Loading
 
 1. Check internet connection
 2. Verify WebView2 Runtime is installed
-3. Ensure firewall isn't blocking connection
+3. Ensure firewall isn't blocking connection to shalazam.info
 4. Try "Reset All Arrows" to refresh map
+5. Try switching maps using the right-click menu
 
 ### Performance Issues
 
@@ -125,6 +134,6 @@ OMNI is provided as-is, without any warranty or guarantee of functionality. This
 ## Acknowledgments
 
 - Pantheon: Rise of the Fallen community
-- Shalazam.info for map services and the amazing map work they have done , none of this could be possible without them.
+- Shalazam.info for map services and the amazing map work they have done, none of this could be possible without them
 - Tesseract OCR project
 - Microsoft WebView2 team

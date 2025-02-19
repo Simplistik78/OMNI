@@ -178,13 +178,28 @@ public partial class CompactUIForm : Form, ICaptureForm
         this.BackColor = Color.Black;
         this.Padding = new Padding(1);
         this.TopMost = true;
+
+        // Add and configure grip panel
         this.Controls.Add(_gripPanel);
         _gripPanel.BringToFront();
+
+        // Setup context menu for control strip
+        var contextMenu = new ContextMenuStrip();
+        var mapMenu = new ToolStripMenuItem("Select Map");
+        mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
+        {
+        new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
+        new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
+        new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
+        });
+        contextMenu.Items.Add(mapMenu);
+
         // Control strip setup
         _controlStrip.Height = 40;
         _controlStrip.Dock = DockStyle.Top;
         _controlStrip.BackColor = Color.FromArgb(30, 30, 30);
         _controlStrip.Padding = new Padding(5);
+        _controlStrip.ContextMenuStrip = contextMenu;  // Add context menu to control strip
 
         // Set up the WebView2 control
         _webView.Dock = DockStyle.Fill;
@@ -196,7 +211,6 @@ public partial class CompactUIForm : Form, ICaptureForm
             Padding = new Padding(1),
             BackColor = Color.FromArgb(30, 30, 30)
         };
-
         contentPanel.Controls.Add(_webView);
 
         // Configure buttons
@@ -219,16 +233,15 @@ public partial class CompactUIForm : Form, ICaptureForm
         // Configure status labels
         _statusLabel.AutoSize = false;
         _statusLabel.ForeColor = Color.White;
-        _statusLabel.Location = new Point(_positionButton.Right + 10, 5);  
-        _statusLabel.Width = _controlStrip.Width - _positionButton.Right - 50;  
+        _statusLabel.Location = new Point(_positionButton.Right + 10, 5);
+        _statusLabel.Width = _controlStrip.Width - _positionButton.Right - 50;
         _statusLabel.Height = 20;
         _statusLabel.Text = "Ready";
         _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
 
-
         _lastCoordinatesLabel.AutoSize = false;
         _lastCoordinatesLabel.ForeColor = Color.White;
-        _lastCoordinatesLabel.Location = new Point(_positionButton.Right + 10, 25);  
+        _lastCoordinatesLabel.Location = new Point(_positionButton.Right + 10, 25);
         _lastCoordinatesLabel.Width = _controlStrip.Width - _positionButton.Right - 50;
         _lastCoordinatesLabel.Height = 20;
         _lastCoordinatesLabel.Text = "No coordinates";
@@ -248,18 +261,18 @@ public partial class CompactUIForm : Form, ICaptureForm
 
         // Add controls to control strip
         _controlStrip.Controls.AddRange(new Control[] {
-            _toggleCaptureButton,
-            _positionButton,
-            _statusLabel,
-            _lastCoordinatesLabel,
-            closeButton
-        });
+        _toggleCaptureButton,
+        _positionButton,
+        _statusLabel,
+        _lastCoordinatesLabel,
+        closeButton
+    });
 
         // Add controls to form
         this.Controls.AddRange(new Control[] {
-            contentPanel,
-            _controlStrip
-        });
+        contentPanel,
+        _controlStrip
+    });
 
         // Set up close button handler
         closeButton.Click += (s, e) => this.Close();
@@ -621,7 +634,42 @@ public partial class CompactUIForm : Form, ICaptureForm
             }
         }
     }
+    private async Task SwitchMap(int mapId)
+    {
+        try
+        {
+            if (_webView.CoreWebView2 != null)
+            {
+                // Stop capture while switching maps
+                var wasCapturing = _isCapturing;
+                if (wasCapturing)
+                {
+                    StopCapture();
+                }
 
+                // Clear existing markers
+                await _mapViewerService.ClearMarkersAsync();
+
+                // Navigate to new map
+                _webView.CoreWebView2.Navigate($"https://shalazam.info/maps/{mapId}");
+
+                // Update status
+                _statusLabel.Text = $"Switched to map {mapId}";
+
+                // Restart capture if it was running
+                if (wasCapturing)
+                {
+                    await Task.Delay(1000); // Give the map time to load
+                    StartCapture();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error switching maps: {ex}");
+            _statusLabel.Text = "Error switching maps";
+        }
+    }
     #region Form Resize Handling
     private bool IsResizingEdge(Point mousePosition)
     {

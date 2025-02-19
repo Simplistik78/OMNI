@@ -28,7 +28,9 @@ public partial class MainForm : Form
     private Coordinates? _lastProcessedCoordinates;
     private DateTime _lastProcessedTime = DateTime.MinValue;
     private const int MinProcessingInterval = 1000; // Minimum time between updates in milliseconds
-
+    private int _currentMapId = 1; // Default to world map
+    
+    
     // UI Controls initialized directly
     private readonly Panel _controlPanel = new();
     private readonly FlowLayoutPanel _historyPanel = new();
@@ -78,7 +80,8 @@ public partial class MainForm : Form
         SetupEventHandlers();
         SetupHotkeys();
         SetupContextMenu();
-
+        
+        
         // Subscribe to map service events
         _mapViewerService.StatusChanged += (s, status) =>
         {
@@ -116,7 +119,16 @@ public partial class MainForm : Form
         this.MinimumSize = new Size(800, 800);
         this.Size = new Size(1024, 968);
         this.StartPosition = FormStartPosition.CenterScreen;
-
+        // Add map selection context menu
+        var contextMenu = new ContextMenuStrip();
+        var mapMenu = new ToolStripMenuItem("Select Map");
+        mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
+        {
+    new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
+    new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
+    new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
+        });
+        contextMenu.Items.Add(mapMenu);
         var aboutButton = new Button
         {
             Text = "About",
@@ -174,7 +186,46 @@ public partial class MainForm : Form
         this.Controls.Add(_controlPanel);
         
     }
+    private async Task SwitchMap(int mapId)
+    {
+        try
+        {
+            if (_webView.CoreWebView2 != null)
+            {
+                // Stop capture while switching maps
+                var wasCapturing = _isCapturing;
+                if (wasCapturing)
+                {
+                    StopCapture();
+                }
 
+                // Clear existing markers
+                await _mapViewerService.ClearMarkersAsync();
+
+                // Navigate to new map
+                _webView.CoreWebView2.Navigate($"https://shalazam.info/maps/{mapId}");
+
+                // Update map ID and status
+                _currentMapId = mapId;
+                _statusLabel.Text = $"Switched to map {mapId}";
+
+                // Reset coordinates since we're changing maps
+                _lastProcessedCoordinates = null;
+
+                // Restart capture if it was running
+                if (wasCapturing)
+                {
+                    await Task.Delay(1000); // Give the map time to load
+                    await StartCapture();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error switching maps: {ex}");
+            _statusLabel.Text = "Error switching maps";
+        }
+    }
     private void ConfigureNumericControls()
     {
         var screenWidth = Screen.PrimaryScreen?.Bounds.Width ?? 1920;
@@ -657,20 +708,10 @@ public partial class MainForm : Form
             {
                 try
                 {
-                    // Set high quality mode
                     graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
                     graphics.CompositingQuality = CompositingQuality.HighQuality;
-
-                    // Capture screen area
-                    graphics.CopyFromScreen(
-                        bounds.X,
-                        bounds.Y,
-                        0,
-                        0,
-                        bounds.Size,
-                        CopyPixelOperation.SourceCopy);
-
+                    graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
                     Debug.WriteLine("Screen area captured successfully");
                 }
                 catch (Exception ex)
@@ -681,19 +722,15 @@ public partial class MainForm : Form
                 }
             }
 
-            // Process the captured image
             var (coordinates, rawText) = await _ocrService.ProcessImageAsync(bitmap);
             Debug.WriteLine($"OCR Capture Result - Coordinates: {coordinates}, Raw Text: {rawText}");
 
             if (coordinates != null && _webView.CoreWebView2 != null)
             {
-                // Check if we should process these coordinates
                 bool shouldProcess = true;
 
-                // If we have previous coordinates, check if they're different
                 if (_lastProcessedCoordinates != null)
                 {
-                    // Don't process if coordinates are the same or if not enough time has passed
                     if (_lastProcessedCoordinates.Equals(coordinates) ||
                         (DateTime.Now - _lastProcessedTime).TotalMilliseconds < MinProcessingInterval)
                     {
@@ -706,16 +743,33 @@ public partial class MainForm : Form
 
                 if (shouldProcess)
                 {
-                    _lastProcessedCoordinates = coordinates;
+                    // Adjust coordinates based on map type
+                    var adjustedCoords = coordinates;
+
+                    switch (_currentMapId)
+                    {
+                        case 2: // Halnir Cave
+                                // TODO: Add coordinate transformation for Halnir Cave
+                            Debug.WriteLine($"Halnir Cave coordinates detected: {coordinates}");
+                            break;
+
+                        case 1: // World Map
+                        case 3: // Goblin Caves
+                        default:
+                            // Use existing coordinate system
+                            break;
+                    }
+
+                    _lastProcessedCoordinates = adjustedCoords;
                     _lastProcessedTime = DateTime.Now;
 
                     Debug.WriteLine("Adding capture to history");
-                    AddToHistory(new Bitmap(bitmap));  // Create a copy for history
+                    AddToHistory(new Bitmap(bitmap));
 
                     var result = await _mapViewerService.AddMarkerAsync(
-                        coordinates.X,
-                        coordinates.Y,
-                        coordinates.Heading
+                        adjustedCoords.X,
+                        adjustedCoords.Y,
+                        adjustedCoords.Heading
                     );
 
                     if (result.Contains("Error"))
@@ -746,6 +800,44 @@ public partial class MainForm : Form
         }
     }
 
+    private void SetupContextMenu()
+    {
+        var contextMenu = new ContextMenuStrip();
+
+        // Add map selection menu
+        var mapMenu = new ToolStripMenuItem("Select Map");
+        mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
+        {
+        new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
+        new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
+        new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
+        });
+
+        // Add capture interval menu
+        var intervalMenu = new ToolStripMenuItem("Capture Interval");
+        foreach (var interval in new[] { 500, 1000, 2000, 5000 })
+        {
+            var item = new ToolStripMenuItem($"{interval}ms");
+            item.Click += (s, e) =>
+            {
+                _captureTimer.Interval = interval;
+                SaveCurrentSettings();
+            };
+            intervalMenu.DropDownItems.Add(item);
+        }
+
+        // Add all menu items
+        contextMenu.Items.AddRange(new ToolStripItem[] {
+        mapMenu,
+        new ToolStripSeparator(),
+        intervalMenu,
+        new ToolStripSeparator(),
+        new ToolStripMenuItem("Reset Position", null, (s, e) => ResetPosition()),
+        new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys())
+    });
+
+        _controlPanel.ContextMenuStrip = contextMenu;
+    }
 
 
 
@@ -898,31 +990,7 @@ public partial class MainForm : Form
     }
 
 
-    private void SetupContextMenu()
-    {
-        var contextMenu = new ContextMenuStrip();
-
-        var intervalMenu = new ToolStripMenuItem("Capture Interval");
-        foreach (var interval in new[] { 500, 1000, 2000, 5000 })
-        {
-            var item = new ToolStripMenuItem($"{interval}ms");
-            item.Click += (s, e) =>
-            {
-                _captureTimer.Interval = interval;
-                SaveCurrentSettings();
-            };
-            intervalMenu.DropDownItems.Add(item);
-        }
-
-        contextMenu.Items.AddRange(new ToolStripItem[] {
-            intervalMenu,
-            new ToolStripSeparator(),
-            new ToolStripMenuItem("Reset Position", null, (s, e) => ResetPosition()),
-            new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys())
-        });
-
-        _controlPanel.ContextMenuStrip = contextMenu;
-    }
+    
 
     private void ShowHotkeys()
     {

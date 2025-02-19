@@ -14,14 +14,9 @@ namespace OMNI.Services.OCR
         private bool disposed;
         private readonly object lockObject = new object();
 
-        // Updated regex pattern:
-        // Captures:
-        // Group 1: X axis
-        // Ignores the second number (Z axis) by matching it without capturing
-        // Group 2: Y axis
-        // Group 3: Heading 
+        // Updated regex pattern to better handle negative coordinates
         private static readonly Regex CoordinatePattern = new(
-            @"^Your location:\s*(\d{3,4}\.\d{2})\s+\d{3,4}\.\d{2}\s+(\d{3,4}\.\d{2})\s+(\d{1,3})",
+            @"^Your location:\s*(-?\d{1,4}\.\d{2})\s+(-?\d{1,4}\.\d{2})\s+(-?\d{1,4}\.\d{2})\s+(\d{1,3})",
             RegexOptions.Compiled
         );
 
@@ -36,7 +31,10 @@ namespace OMNI.Services.OCR
             try
             {
                 engine = new TesseractEngine(tessDataPath, "eng", EngineMode.Default);
-                settings = new OCRSettings();
+                settings = new OCRSettings
+                {
+                    AllowedCharacters = "Your location:-.0123456789 "  // Added minus sign to allowed characters for Halnir cave cords.
+                };
                 ConfigureEngine();
             }
             catch (Exception ex)
@@ -71,9 +69,16 @@ namespace OMNI.Services.OCR
                         using var page = engine.Process(pix);
 
                         string text = page.GetText()?.Trim().Replace("\n", " ").Replace("\r", "") ?? string.Empty;
-                        Debug.WriteLine($"Raw OCR text: {text}");
-                        var coordinates = ParseCoordinates(text);
+                        Debug.WriteLine($"Raw OCR capture: '{text}'");  // Added quotes to see whitespace cause im blind
 
+                        // Debug each character
+                        Debug.WriteLine("Character by character analysis:");
+                        foreach (char c in text)
+                        {
+                            Debug.WriteLine($"'{c}' - ASCII: {(int)c}");
+                        }
+
+                        var coordinates = ParseCoordinates(text);
                         return (coordinates, text);
                     }
                     catch (Exception ex)
@@ -151,13 +156,15 @@ namespace OMNI.Services.OCR
 
                 if (match.Success &&
                     float.TryParse(match.Groups[1].Value, out float x) &&
-                    float.TryParse(match.Groups[2].Value, out float y) &&
-                    float.TryParse(match.Groups[3].Value, out float heading))
+                    float.TryParse(match.Groups[3].Value, out float y) &&  // Using third group for Y coordinate
+                    float.TryParse(match.Groups[4].Value, out float heading))
                 {
-                    Debug.WriteLine($"Successfully parsed coordinates: X={x}, Y={y}, Heading={heading}");
+                    Debug.WriteLine($"Raw values - X: {match.Groups[1].Value}, Z: {match.Groups[2].Value}, Y: {match.Groups[3].Value}, H: {match.Groups[4].Value}");
+                    Debug.WriteLine($"Parsed coordinates: X={x}, Y={y}, H={heading}");
                     return new Coordinates(x, y, heading);
                 }
 
+                Debug.WriteLine("Failed to parse coordinates");
                 return null;
             }
             catch (Exception ex)
