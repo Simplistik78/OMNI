@@ -21,6 +21,7 @@ public partial class CompactUIForm : Form, ICaptureForm
     private readonly Label _lastCoordinatesLabel;
     private readonly System.Windows.Forms.Timer _captureTimer;
     private readonly Panel _controlStrip;
+    private readonly Panel _gripPanel;
 
     private readonly NumericUpDown _captureX = new()
     {
@@ -72,7 +73,7 @@ public partial class CompactUIForm : Form, ICaptureForm
     private readonly object _saveLock = new object();
     private bool _isSaving;
     private const int RESIZE_BORDER = 5;
-
+    
     private enum ResizeDirection
     {
         None,
@@ -97,7 +98,21 @@ public partial class CompactUIForm : Form, ICaptureForm
         _statusLabel = new Label();
         _lastCoordinatesLabel = new Label();
         _captureTimer = new System.Windows.Forms.Timer();
-
+        _gripPanel = new Panel
+        {
+            Height = 10,  // Thin strip at the top
+            Dock = DockStyle.Top,
+            BackColor = Color.FromArgb(30, 30, 30),  // Match your form's theme
+            Cursor = Cursors.SizeAll  // Always show move cursor
+        };
+        _gripPanel.MouseDown += (s, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                NativeMethods.ReleaseCapture();
+                NativeMethods.SendMessage(Handle, 0xA1, 0x2, 0);
+            }
+        };
         // Initialize map service for compact mode
         _mapViewerService = new MapViewerService(_webView, isCompactMode: true);
 
@@ -163,7 +178,8 @@ public partial class CompactUIForm : Form, ICaptureForm
         this.BackColor = Color.Black;
         this.Padding = new Padding(1);
         this.TopMost = true;
-
+        this.Controls.Add(_gripPanel);
+        _gripPanel.BringToFront();
         // Control strip setup
         _controlStrip.Height = 40;
         _controlStrip.Dock = DockStyle.Top;
@@ -201,15 +217,22 @@ public partial class CompactUIForm : Form, ICaptureForm
         _positionButton.Location = new Point(120, 5);
 
         // Configure status labels
-        _statusLabel.AutoSize = true;
+        _statusLabel.AutoSize = false;
         _statusLabel.ForeColor = Color.White;
-        _statusLabel.Location = new Point(230, 12);
+        _statusLabel.Location = new Point(_positionButton.Right + 10, 5);  
+        _statusLabel.Width = _controlStrip.Width - _positionButton.Right - 50;  
+        _statusLabel.Height = 20;
         _statusLabel.Text = "Ready";
+        _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
 
-        _lastCoordinatesLabel.AutoSize = true;
+
+        _lastCoordinatesLabel.AutoSize = false;
         _lastCoordinatesLabel.ForeColor = Color.White;
-        _lastCoordinatesLabel.Location = new Point(230, 30);
+        _lastCoordinatesLabel.Location = new Point(_positionButton.Right + 10, 25);  
+        _lastCoordinatesLabel.Width = _controlStrip.Width - _positionButton.Right - 50;
+        _lastCoordinatesLabel.Height = 20;
         _lastCoordinatesLabel.Text = "No coordinates";
+        _lastCoordinatesLabel.TextAlign = ContentAlignment.MiddleLeft;
 
         // Add close button
         var closeButton = new Button

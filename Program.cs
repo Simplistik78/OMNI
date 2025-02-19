@@ -55,6 +55,7 @@ internal static class Program
         }
     }
 
+
     private static async void ToggleUIMode()
     {
         if (_isClosing || _isChangingForms) return;

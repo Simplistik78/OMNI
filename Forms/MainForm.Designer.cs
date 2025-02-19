@@ -26,6 +26,7 @@
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "MainForm";
             Text = "OMNI – Overlay Map & Navigation Interface";
+            Load += MainForm_Load;
             ResumeLayout(false);
         }
 

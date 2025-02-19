@@ -9,6 +9,8 @@ using OMNI.Services.WebView;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using OMNI.Models;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace OMNI.Forms;
 
@@ -26,7 +28,7 @@ public partial class MainForm : Form
     private Coordinates? _lastProcessedCoordinates;
     private DateTime _lastProcessedTime = DateTime.MinValue;
     private const int MinProcessingInterval = 1000; // Minimum time between updates in milliseconds
-    
+
     // UI Controls initialized directly
     private readonly Panel _controlPanel = new();
     private readonly FlowLayoutPanel _historyPanel = new();
@@ -52,7 +54,7 @@ public partial class MainForm : Form
 
         // Initialize WebView2 and core components
         _webView = new WebView2();
-        _mapViewerService = new MapViewerService(_webView);
+        _mapViewerService = new MapViewerService(_webView, isCompactMode: false);  // Set isCompactMode here
         _captureHistory = new Queue<PictureBox>(10);
         _hotKeyManager = new HotKeyManager(this);
         _testService = new TestCoordinateService();
@@ -66,9 +68,8 @@ public partial class MainForm : Form
             BackColor = SystemColors.Control
         };
 
-        //dont hide stuff on mainforms  map
-        _mapViewerService = new MapViewerService(_webView, isCompactMode: false);
-        
+
+
         InitializeComponent();
         SetupFormLayout();
         InitializeCustomControls();
@@ -116,21 +117,41 @@ public partial class MainForm : Form
         this.Size = new Size(1024, 968);
         this.StartPosition = FormStartPosition.CenterScreen;
 
-        _webView.Dock = DockStyle.Fill;
+        var aboutButton = new Button
+        {
+            Text = "About",
+            Dock = DockStyle.Top,
+            Height = 30,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(244, 244, 244),
+            Margin = new Padding(0, 5, 0, 5)
+        };
 
-        _controlPanel.Dock = DockStyle.Left;
+        aboutButton.Click += (s, e) =>
+        {
+            using var aboutDialog = new AboutDialog();
+            aboutDialog.ShowDialog(this);
+        };
+
+
+
+        // Configure panels
+        _webView.Dock = DockStyle.Fill;
+         _controlPanel.Dock = DockStyle.Left;
         _controlPanel.Width = 280;
         _controlPanel.MinimumSize = new Size(280, 0);
         _controlPanel.MaximumSize = new Size(280, 0);
         _controlPanel.Padding = new Padding(10);
         _controlPanel.AutoScroll = true;
 
-        _historyPanel.Dock = DockStyle.Bottom;
-        _historyPanel.Height = 100;
+        _historyPanel.Dock = DockStyle.Fill; 
         _historyPanel.AutoScroll = true;
         _historyPanel.FlowDirection = FlowDirection.LeftToRight;
+        _historyPanel.WrapContents = true;
+        _historyPanel.BackColor = Color.White;  
         _historyPanel.BorderStyle = BorderStyle.FixedSingle;
-        _historyPanel.Padding = new Padding(5);
+        _historyPanel.Padding = new Padding(10);
+        _historyPanel.Visible = true;  
 
         var mapContainer = new Panel
         {
@@ -145,10 +166,13 @@ public partial class MainForm : Form
             Width = 4
         };
 
+        // Add controls in the correct order
+        
         this.Controls.Add(mapContainer);
         this.Controls.Add(_historyPanel);
         this.Controls.Add(splitter);
         this.Controls.Add(_controlPanel);
+        
     }
 
     private void ConfigureNumericControls()
@@ -179,11 +203,41 @@ public partial class MainForm : Form
         {
             Text = "Capture Area",
             Dock = DockStyle.Top,
-            Height = 140,
+            Height = 160,
             Padding = new Padding(10)
         };
 
-        // Initialize Compact UI Toggle Button
+
+        var aboutButton = new Button
+        {
+            Text = "About",
+            Dock = DockStyle.Top,
+            Height = 20,
+            FlatStyle = FlatStyle.Standard,
+            BackColor = SystemColors.Control,
+            Margin = new Padding(5, 1, 5, 1)
+        };
+
+        aboutButton.Click += (s, e) =>
+        {
+            using var aboutDialog = new AboutDialog();
+            aboutDialog.ShowDialog(this);
+        };
+        
+
+        _statusLabel.AutoSize = false;
+        _statusLabel.Dock = DockStyle.Top;
+        _statusLabel.Height = 40;
+        _statusLabel.BackColor = Color.FromArgb(240, 240, 240);
+        _statusLabel.Padding = new Padding(5);
+        _statusLabel.Text = "Map initialized successfully\nNo coordinates captured";
+
+        _lastCoordinatesLabel.AutoSize = true;
+        _lastCoordinatesLabel.Dock = DockStyle.Top;
+        _lastCoordinatesLabel.Margin = new Padding(0, 5, 0, 0);
+        _lastCoordinatesLabel.Text = "No coordinates captured";
+
+
         _compactUIButton.Text = "Enable Compact UI";
         _compactUIButton.Dock = DockStyle.Top;
         _compactUIButton.Height = 40;
@@ -225,10 +279,11 @@ public partial class MainForm : Form
         _testCaptureButton.Text = "Test Capture Area";
         _testCaptureButton.Dock = DockStyle.Top;
         _testCaptureButton.Height = 30;
-        _testCaptureButton.Margin = new Padding(0, 5, 0, 0);
+        _testCaptureButton.Margin = new Padding(0, 5, 0, 10);
         _testCaptureButton.FlatStyle = FlatStyle.Standard;
         _testCaptureButton.BackColor = SystemColors.Control;
         _controlPanel.Controls.Add(_testModeButton);//test button for out of game testing
+
         var numericTable = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -236,9 +291,9 @@ public partial class MainForm : Form
             RowCount = 4,
             Padding = new Padding(0),
             ColumnStyles = {
-                new ColumnStyle(SizeType.Absolute, 60),
-                new ColumnStyle(SizeType.Percent, 100)
-            }
+            new ColumnStyle(SizeType.Absolute, 60),
+            new ColumnStyle(SizeType.Percent, 100)
+        }
         };
 
         numericTable.Controls.Add(new Label { Text = "X:", Anchor = AnchorStyles.Left }, 0, 0);
@@ -252,28 +307,20 @@ public partial class MainForm : Form
 
         captureGroupBox.Controls.Add(numericTable);
 
-        _statusLabel.AutoSize = true;
-        _statusLabel.Dock = DockStyle.Top;
-        _statusLabel.Margin = new Padding(0, 10, 0, 0);
-        _statusLabel.Text = "Ready";
-
-        _lastCoordinatesLabel.AutoSize = true;
-        _lastCoordinatesLabel.Dock = DockStyle.Top;
-        _lastCoordinatesLabel.Margin = new Padding(0, 5, 0, 0);
-        _lastCoordinatesLabel.Text = "No coordinates captured";
 
         _controlPanel.Controls.Clear();
         _controlPanel.Controls.AddRange(new Control[] {
-            _compactUIButton,
-            _overlayButton,
-            _resetPinsButton,
-            _startStopButton,
-            _singleCaptureButton,
-            _testCaptureButton,
-            captureGroupBox,
-            _lastCoordinatesLabel,
-            _statusLabel
-        });
+    aboutButton,
+    _statusLabel,
+    captureGroupBox,
+    _testCaptureButton,
+    _singleCaptureButton,
+    _startStopButton,
+    _resetPinsButton,
+    _overlayButton,
+    _compactUIButton,
+    _historyPanel  
+});
     }
     private void CompactUIButton_Click(object? sender, EventArgs e)
     {
@@ -393,19 +440,19 @@ public partial class MainForm : Form
     }
 
     public void StopCapture()
+    {
+        if (_isCapturing)
         {
-            if (_isCapturing)
-            {
-                _captureTimer.Stop();
-                _startStopButton.Text = "Start Capture";
-                _statusLabel.Text = "Stopped";
-                _isCapturing = false;
-                Debug.WriteLine("Capture stopped");
-            }
+            _captureTimer.Stop();
+            _startStopButton.Text = "Start Capture";
+            _statusLabel.Text = "Stopped";
+            _isCapturing = false;
+            Debug.WriteLine("Capture stopped");
         }
+    }
 
-        
-    
+
+
     private void SetupEventHandlers()
     {
         _startStopButton.Click += StartStopButton_Click;
@@ -623,6 +670,8 @@ public partial class MainForm : Form
                         0,
                         bounds.Size,
                         CopyPixelOperation.SourceCopy);
+
+                    Debug.WriteLine("Screen area captured successfully");
                 }
                 catch (Exception ex)
                 {
@@ -634,6 +683,7 @@ public partial class MainForm : Form
 
             // Process the captured image
             var (coordinates, rawText) = await _ocrService.ProcessImageAsync(bitmap);
+            Debug.WriteLine($"OCR Capture Result - Coordinates: {coordinates}, Raw Text: {rawText}");
 
             if (coordinates != null && _webView.CoreWebView2 != null)
             {
@@ -659,6 +709,9 @@ public partial class MainForm : Form
                     _lastProcessedCoordinates = coordinates;
                     _lastProcessedTime = DateTime.Now;
 
+                    Debug.WriteLine("Adding capture to history");
+                    AddToHistory(new Bitmap(bitmap));  // Create a copy for history
+
                     var result = await _mapViewerService.AddMarkerAsync(
                         coordinates.X,
                         coordinates.Y,
@@ -674,8 +727,6 @@ public partial class MainForm : Form
                     {
                         _statusLabel.Text = "Pin set";
                         Debug.WriteLine($"Marker placed at X:{coordinates.X} Y:{coordinates.Y} H:{coordinates.Heading}");
-                        // Add to history after successful placement
-                        AddToHistory(new Bitmap(bitmap));
                     }
 
                     _lastCoordinatesLabel.Text = $"Found: {coordinates}";
@@ -700,23 +751,32 @@ public partial class MainForm : Form
 
     private void AddToHistory(Bitmap capture)
     {
+        Debug.WriteLine($"AddToHistory called, Current history count: {_captureHistory.Count}");  
         try
         {
-            if (capture == null) return;
+            if (capture == null)
+            {
+                Debug.WriteLine("Capture is null");  
+                return;
+            }
 
             var pictureBox = new PictureBox
             {
-                Size = new Size(80, 30),
+                Size = new Size(120, 90),
                 SizeMode = PictureBoxSizeMode.Zoom,
-                Margin = new Padding(5)
+                Margin = new Padding(5),
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.LightGray
             };
 
             try
             {
                 pictureBox.Image = capture;
+                Debug.WriteLine("Image set to PictureBox");  
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.WriteLine($"Error setting image: {ex}");
                 capture.Dispose();
                 pictureBox.Dispose();
                 return;
@@ -724,37 +784,37 @@ public partial class MainForm : Form
 
             if (_captureHistory.Count >= 10)
             {
-                try
-                {
-                    var oldPictureBox = _captureHistory.Dequeue();
-                    _historyPanel.Controls.Remove(oldPictureBox);
-                    oldPictureBox.Image?.Dispose();
-                    oldPictureBox.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Error clearing history: {ex}");
-                }
+                Debug.WriteLine("Removing old capture from history");  
+                var oldPictureBox = _captureHistory.Dequeue();
+                _historyPanel.Controls.Remove(oldPictureBox);
+                oldPictureBox.Image?.Dispose();
+                oldPictureBox.Dispose();
             }
 
             _captureHistory.Enqueue(pictureBox);
+            Debug.WriteLine($"New history count: {_captureHistory.Count}");  
 
-            if (!_historyPanel.IsDisposed && _historyPanel.InvokeRequired)
+            if (!_historyPanel.IsDisposed)
             {
-                _historyPanel.Invoke(() => {
+                if (_historyPanel.InvokeRequired)
+                {
+                    _historyPanel.Invoke(() => {
+                        _historyPanel.Controls.Add(pictureBox);
+                        _historyPanel.Refresh();
+                        Debug.WriteLine("Added to history panel via Invoke");  
+                    });
+                }
+                else
+                {
                     _historyPanel.Controls.Add(pictureBox);
-                    _historyPanel.ScrollControlIntoView(pictureBox);
-                });
-            }
-            else if (!_historyPanel.IsDisposed)
-            {
-                _historyPanel.Controls.Add(pictureBox);
-                _historyPanel.ScrollControlIntoView(pictureBox);
+                    _historyPanel.Refresh();
+                    Debug.WriteLine("Added to history panel directly");  
+                }
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error adding to history: {ex}");
+            Debug.WriteLine($"Error in AddToHistory: {ex}");
         }
     }
 
@@ -902,5 +962,11 @@ public partial class MainForm : Form
         }
         _captureHistory.Clear();
         _historyPanel.Controls.Clear();
+    }
+       
+
+    private void MainForm_Load(object sender, EventArgs e)
+    {
+
     }
 }
