@@ -98,7 +98,7 @@ Right-click on either the main form's control panel or the compact UI's title ba
 1. Ensure capture area is correctly positioned
 2. Check that coordinate text is clearly visible
 3. Verify text is white on dark background
-4. Use "Test Capture Area" to confirm position
+4. Use "Test Capture Area" to confirm position and ensure the OCR overlay is positioned over just the first line of text in chat box.(99% of the time this is going to be the problem)
 5. For Halnir Cave, ensure negative coordinates are being captured correctly
 
 ### Map Not Loading
@@ -108,7 +108,7 @@ Right-click on either the main form's control panel or the compact UI's title ba
 3. Ensure firewall isn't blocking connection to shalazam.info
 4. Try "Reset All Arrows" to refresh map
 5. Try switching maps using the right-click menu
-6. Ensure the OCR overlay is positioned over just the first line of test in chat box.(majority of the time this is going to be the problem)
+
 ### Performance Issues
 
 1. Increase capture interval in context menu
