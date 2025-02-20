@@ -108,7 +108,7 @@ Right-click on either the main form's control panel or the compact UI's title ba
 3. Ensure firewall isn't blocking connection to shalazam.info
 4. Try "Reset All Arrows" to refresh map
 5. Try switching maps using the right-click menu
-
+6. Ensure the OCR overlay is positioned over just the first line of test in chat box.(majority of the time this is going to be the problem)
 ### Performance Issues
 
 1. Increase capture interval in context menu
