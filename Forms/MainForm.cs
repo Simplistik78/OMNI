@@ -29,8 +29,8 @@ public partial class MainForm : Form
     private DateTime _lastProcessedTime = DateTime.MinValue;
     private const int MinProcessingInterval = 1000; // Minimum time between updates in milliseconds
     private int _currentMapId = 1; // Default to world map
-    
-    
+    private readonly ClipboardMonitorService _clipboardService;
+
     // UI Controls initialized directly
     private readonly Panel _controlPanel = new();
     private readonly FlowLayoutPanel _historyPanel = new();
@@ -59,6 +59,9 @@ public partial class MainForm : Form
         _mapViewerService = new MapViewerService(_webView, isCompactMode: false);  // Set isCompactMode here
         _captureHistory = new Queue<PictureBox>(10);
         _hotKeyManager = new HotKeyManager(this);
+        _clipboardService = new ClipboardMonitorService();
+        _clipboardService.CoordinatesFound += async (s, coords) => await ProcessCoordinates(coords);
+        _clipboardService.StatusChanged += (s, status) => _statusLabel.Text = status;
         _testService = new TestCoordinateService();
         _testModeButton = new Button
         {
@@ -457,7 +460,7 @@ public partial class MainForm : Form
             components?.Dispose();
             _mapViewerService?.Dispose();
             _hotKeyManager?.Dispose();
-            // Do not dispose OCR service here
+            _clipboardService?.Dispose();
             ClearCaptureHistory();
         }
         base.Dispose(disposing);
@@ -469,14 +472,13 @@ public partial class MainForm : Form
 
         try
         {
-            // Ensure map is initialized
             await _mapViewerService.WaitForInitializationAsync();
-
+            _clipboardService.IsEnabled = false; // Disable clipboard monitoring
             _captureTimer.Start();
             _startStopButton.Text = "Stop";
             _statusLabel.Text = "Capturing...";
             _isCapturing = true;
-            Debug.WriteLine("Capture started");
+            Debug.WriteLine("OCR Capture started");
         }
         catch (Exception ex)
         {
@@ -498,10 +500,53 @@ public partial class MainForm : Form
             _startStopButton.Text = "Start Capture";
             _statusLabel.Text = "Stopped";
             _isCapturing = false;
-            Debug.WriteLine("Capture stopped");
+            _clipboardService.IsEnabled = true; // Re-enable clipboard monitoring
+            Debug.WriteLine("OCR Capture stopped, clipboard monitoring resumed");
         }
     }
+    
+    private async Task ProcessCoordinates(Coordinates coordinates)
+    {
+        try
+        {
+            if (coordinates != null && _webView.CoreWebView2 != null)
+            {
+                if (_lastProcessedCoordinates?.Equals(coordinates) == true &&
+                    (DateTime.Now - _lastProcessedTime).TotalMilliseconds < MinProcessingInterval)
+                {
+                    Debug.WriteLine("Skipping duplicate coordinates");
+                    return;
+                }
 
+                _lastProcessedCoordinates = coordinates;
+                _lastProcessedTime = DateTime.Now;
+
+                var result = await _mapViewerService.AddMarkerAsync(
+                    coordinates.X,
+                    coordinates.Y,
+                    coordinates.Heading
+                );
+
+                if (result.Contains("Error"))
+                {
+                    _statusLabel.Text = result;
+                    Debug.WriteLine($"Marker placement failed: {result}");
+                }
+                else
+                {
+                    _statusLabel.Text = "Pin set";
+                    Debug.WriteLine($"Marker placed at X:{coordinates.X} Y:{coordinates.Y} H:{coordinates.Heading}");
+                }
+
+                _lastCoordinatesLabel.Text = $"Found: {coordinates}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error processing coordinates: {ex}");
+            _statusLabel.Text = $"Error: {ex.Message}";
+        }
+    }
 
 
     private void SetupEventHandlers()

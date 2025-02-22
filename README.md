@@ -16,18 +16,23 @@ An advanced Windows Forms application that provides real-time coordinate trackin
 
 ## Overview
 
-OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enhance the gaming experience in Pantheon: Rise of the Fallen by providing real-time coordinate tracking and visualization. It captures in-game coordinates and displays them on an interactive map interface, allowing players to better navigate the world.
+OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enhance the gaming experience in Pantheon: Rise of the Fallen by providing real-time coordinate tracking and visualization. It offers two methods of coordinate capture:
+
+1. Clipboard Monitoring (Default): Automatically captures coordinates when using `/loc` or `/jumploc` commands in-game
+2. OCR-based capture: Captures coordinates by reading them directly from the screen
 
 ## Features
 
-- Real-time coordinate capture and mapping
+- Dual coordinate capture methods:
+  - Clipboard monitoring for `/loc` and `/jumploc` commands (Default)
+  - OCR-based screen coordinate detection
+- Real-time coordinate tracking and mapping
 - Support for multiple maps (World Map, Halnir Cave, Goblin Caves)
 - Interactive map integration with shalazam.info
-- Advanced OCR-based coordinate detection including negative coordinates
 - Configurable capture area with visual positioning
 - Debugging history with last 10 captures
-- Global hotkey support
 - Compact UI mode for minimal screen space usage
+- Automatic switching between capture methods
 
 ## Requirements
 
@@ -45,16 +50,34 @@ OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enha
 ## First Time Setup
 
 1. Launch OMNI
-2. Click "Position Capture Window" to set the capture area
-3. Position the overlay where your coordinates appear in-game
+2. The application will start in clipboard monitoring mode by default
+3. Use `/loc` or `/jumploc` in-game to see your location on the map
+
+### Optional OCR Setup
+
+If you want to use OCR-based capture:
+
+1. Click "Position Capture Window" to set the capture area
+2. Position the overlay where your coordinates appear in-game
    - Coordinates should be visible and in format: "Your location: X Z Y H"
    - Only X and Y coordinates are used for mapping
-4. Click "Capture" to save the position
+3. Click "Capture" to save the position
 
 ## Usage
 
+### Coordinate Capture Methods
+
+1. **Clipboard Monitoring (Default)**
+   - Simply use `/loc` or `/jumploc` in game
+   - Your position will automatically update on the map
+   - No additional setup required
+
+2. **OCR-based Capture**
+   - Click "Start Capture" to begin OCR monitoring
+   - Application will automatically switch back to clipboard monitoring when OCR is stopped
+
 ### Main Controls
-(Hotkeys Disabled for now)
+(Hotkeys Currently Disabled)
 - **Start/Stop Capture (F9)**: Begin/end continuous coordinate capture
 - **Single Capture (Ctrl+F10)**: Capture coordinates once
 - **Test Capture Area (Ctrl+T)**: Highlight current capture area
@@ -95,11 +118,15 @@ Right-click on either the main form's control panel or the compact UI's title ba
 
 ### No Coordinates Detected
 
-1. Ensure capture area is correctly positioned
-2. Check that coordinate text is clearly visible
-3. Verify text is white on dark background
-4. Use "Test Capture Area" to confirm position
-5. For Halnir Cave, ensure negative coordinates are being captured correctly
+1. When using clipboard monitoring:
+   - Ensure you're using `/loc` or `/jumploc` commands in-game
+   - Check if clipboard access is allowed
+
+2. When using OCR capture:
+   - Ensure capture area is correctly positioned
+   - Check that coordinate text is clearly visible
+   - Verify text is white on dark background
+   - Use "Test Capture Area" to confirm position
 
 ### Map Not Loading
 
@@ -112,7 +139,7 @@ Right-click on either the main form's control panel or the compact UI's title ba
 ### Performance Issues
 
 1. Increase capture interval in context menu
-2. Reduce capture area size
+2. Reduce capture area size if using OCR
 3. Close other resource-intensive applications
 
 ## Support
@@ -134,6 +161,7 @@ OMNI is provided as-is, without any warranty or guarantee of functionality. This
 ## Acknowledgments
 
 - Pantheon: Rise of the Fallen community
+- binutils (Discord) for the clipboard monitoring implementation tip
 - Shalazam.info for map services and the amazing map work they have done, none of this could be possible without them
 - Tesseract OCR project
 - Microsoft WebView2 team

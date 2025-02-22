@@ -6,6 +6,7 @@ using OMNI.Services;
 using OMNI.Services.WebView;
 using System.Diagnostics;
 using System.Threading;
+using OMNI.Models;
 
 namespace OMNI.Forms;
 
@@ -22,6 +23,7 @@ public partial class CompactUIForm : Form, ICaptureForm
     private readonly System.Windows.Forms.Timer _captureTimer;
     private readonly Panel _controlStrip;
     private readonly Panel _gripPanel;
+    private readonly ClipboardMonitorService _clipboardService;
 
     private readonly NumericUpDown _captureX = new()
     {
@@ -88,9 +90,7 @@ public partial class CompactUIForm : Form, ICaptureForm
         _ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
 
-        InitializeComponent();
-
-        // Initialize controls
+        // Initialize controls first
         _webView = new WebView2();
         _controlStrip = new Panel();
         _toggleCaptureButton = new Button();
@@ -105,6 +105,9 @@ public partial class CompactUIForm : Form, ICaptureForm
             BackColor = Color.FromArgb(30, 30, 30),  // Match your form's theme
             Cursor = Cursors.SizeAll  // Always show move cursor
         };
+
+        InitializeComponent();
+
         _gripPanel.MouseDown += (s, e) =>
         {
             if (e.Button == MouseButtons.Left)
@@ -113,15 +116,33 @@ public partial class CompactUIForm : Form, ICaptureForm
                 NativeMethods.SendMessage(Handle, 0xA1, 0x2, 0);
             }
         };
-        // Initialize map service for compact mode
+
+        // Initialize services
         _mapViewerService = new MapViewerService(_webView, isCompactMode: true);
+        _clipboardService = new ClipboardMonitorService();
+        _clipboardService.CoordinatesFound += async (s, coords) => await ProcessCoordinates(coords);
+        _clipboardService.StatusChanged += (s, status) =>
+        {
+            if (!IsDisposed && _statusLabel != null)
+            {
+                if (_statusLabel.InvokeRequired)
+                {
+                    _statusLabel.Invoke(() => _statusLabel.Text = status);
+                }
+                else
+                {
+                    _statusLabel.Text = status;
+                }
+            }
+        };
 
         SetupCustomComponents();
         SetupEventHandlers();
         LoadSettings();
+    
 
-        // Configure capture timer
-        _captureTimer.Interval = Math.Max(1000, _settingsService.CurrentSettings.CaptureInterval);
+    // Configure capture timer
+    _captureTimer.Interval = Math.Max(1000, _settingsService.CurrentSettings.CaptureInterval);
 
         // Subscribe to map service events
         _mapViewerService.StatusChanged += (s, status) =>
@@ -330,11 +351,12 @@ public partial class CompactUIForm : Form, ICaptureForm
     {
         if (!_isCapturing)
         {
+            _clipboardService.IsEnabled = false; // Disable clipboard monitoring
             _captureTimer.Start();
             _toggleCaptureButton.Text = "Stop";
-            _statusLabel.Text = "Capturing...";
+            _statusLabel.Text = "OCR Capturing...";
             _isCapturing = true;
-            Debug.WriteLine("Capture started");
+            Debug.WriteLine("OCR Capture started");
         }
     }
 
@@ -344,9 +366,10 @@ public partial class CompactUIForm : Form, ICaptureForm
         {
             _captureTimer.Stop();
             _toggleCaptureButton.Text = "Start Capture";
-            _statusLabel.Text = "Stopped";
+            _statusLabel.Text = "OCR Stopped";
             _isCapturing = false;
-            Debug.WriteLine("Capture stopped");
+            _clipboardService.IsEnabled = true; // Re-enable clipboard monitoring
+            Debug.WriteLine("OCR Capture stopped, clipboard monitoring resumed");
         }
     }
 
@@ -454,6 +477,29 @@ public partial class CompactUIForm : Form, ICaptureForm
 
             if (coordinates != null)
             {
+                await ProcessCoordinates(coordinates);
+            }
+            else
+            {
+                _statusLabel.Text = "No coordinates found";
+                _lastCoordinatesLabel.Text = $"Failed: {rawText}";
+                Debug.WriteLine($"OCR failed to find coordinates. Raw text: {rawText}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Capture error: {ex}");
+            _statusLabel.Text = $"Error: {ex.Message}";
+        }
+    }
+    private async Task ProcessCoordinates(Coordinates coordinates)
+    {
+        if (this.IsDisposed) return;
+
+        try
+        {
+            if (coordinates != null)
+            {
                 var result = await _mapViewerService.AddMarkerAsync(
                     coordinates.X,
                     coordinates.Y,
@@ -473,20 +519,13 @@ public partial class CompactUIForm : Form, ICaptureForm
 
                 _lastCoordinatesLabel.Text = $"Found: {coordinates}";
             }
-            else
-            {
-                _statusLabel.Text = "No coordinates found";
-                _lastCoordinatesLabel.Text = $"Failed: {rawText}";
-                Debug.WriteLine($"OCR failed to find coordinates. Raw text: {rawText}");
-            }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Capture error: {ex}");
+            Debug.WriteLine($"Error processing coordinates: {ex}");
             _statusLabel.Text = $"Error: {ex.Message}";
         }
     }
-
     private void LoadSettings()
     {
         var settings = _settingsService.CurrentSettings;
@@ -825,6 +864,9 @@ public partial class CompactUIForm : Form, ICaptureForm
                     settings.CompactUIEnabled = false;
                     _settingsService.SaveSettings(settings);
                 }
+
+                // Clean up clipboard service
+                _clipboardService?.Dispose();
             }
         }
         catch (Exception ex)
@@ -835,6 +877,7 @@ public partial class CompactUIForm : Form, ICaptureForm
         base.OnFormClosing(e);
     }
 
+
     protected override void Dispose(bool disposing)
     {
         if (disposing && !_disposed)
@@ -844,6 +887,7 @@ public partial class CompactUIForm : Form, ICaptureForm
             _captureTimer?.Dispose();
             _cancellationTokenSource?.Dispose();
             _mapViewerService?.Dispose();
+            _clipboardService?.Dispose();
 
             lock (_saveLock)
             {
