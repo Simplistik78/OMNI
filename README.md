@@ -63,6 +63,15 @@ If you want to use OCR-based capture:
    - Only X and Y coordinates are used for mapping
 3. Click "Capture" to save the position
 
+NOTE: When positioning the capture window postion it like so , being below the chat box is ok but you dont want it running above the first line of text you want the full line of numbers being displayed or what could possibly be displayed.
+
+![image](https://github.com/user-attachments/assets/198546bb-dcd5-41a6-8981-be88a3e954e2)
+
+NOT like this 
+
+![image](https://github.com/user-attachments/assets/c4663063-5e85-47f1-8603-ddb5f8d1a8df)
+
+
 ## Usage
 
 ### Coordinate Capture Methods
