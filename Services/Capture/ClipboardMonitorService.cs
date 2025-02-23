@@ -9,13 +9,12 @@ public class ClipboardMonitorService : IDisposable
     private readonly System.Windows.Forms.Timer _pollTimer;
     private string _lastClipboardText = string.Empty;
     private static readonly Regex JumpLocPattern = new(
-        @"/jumploc\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)",
+        @"/jumploc\s+(-?\d+\.\d{2})\s+(-?\d+\.\d{2})\s+(-?\d+\.\d{2})\s+(-?\d+)",
         RegexOptions.Compiled
     );
 
     public event EventHandler<Coordinates>? CoordinatesFound;
     public event EventHandler<string>? StatusChanged;
-
     private bool _isEnabled;
     private bool _disposed;
 
@@ -72,18 +71,29 @@ public class ClipboardMonitorService : IDisposable
                 if (string.IsNullOrWhiteSpace(clipText))
                     return;
 
+                Debug.WriteLine($"Processing clipboard text: {clipText}");
                 var match = JumpLocPattern.Match(clipText);
+
                 if (match.Success)
                 {
-                    if (float.TryParse(match.Groups[1].Value, out float x) &&
-                        float.TryParse(match.Groups[2].Value, out float z) &&
-                        float.TryParse(match.Groups[3].Value, out float y) &&
-                        float.TryParse(match.Groups[4].Value, out float heading))
+                    // Parse coordinates from "/jumploc X Z Y H" format
+                    if (float.TryParse(match.Groups[1].Value, out float x) &&           // X coordinate
+                        float.TryParse(match.Groups[2].Value, out float _) &&           // Z coordinate (ignored)
+                        float.TryParse(match.Groups[3].Value, out float y) &&           // Y coordinate 
+                        float.TryParse(match.Groups[4].Value, out float heading))       // Heading
                     {
                         var coordinates = new Coordinates(x, y, heading);
                         Debug.WriteLine($"Clipboard coordinates found: {coordinates}");
                         CoordinatesFound?.Invoke(this, coordinates);
                     }
+                    else
+                    {
+                        Debug.WriteLine("Failed to parse coordinates from matched text");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine("Clipboard text did not match expected format");
                 }
             }
         }
