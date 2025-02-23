@@ -128,11 +128,11 @@ Right-click on either the main form's control panel or the compact UI's title ba
 ### No Coordinates Detected
 
 1. When using clipboard monitoring:
-   - Ensure you're using `/loc` or `/jumploc` commands in-game
+   - Ensure you're using `/loc` command in-game
    - Check if clipboard access is allowed
 
 2. When using OCR capture:
-   - Ensure capture area is correctly positioned
+   - Ensure capture area is correctly positioned ( see note above in Optional OCR Setup )
    - Check that coordinate text is clearly visible
    - Verify text is white on dark background
    - Use "Test Capture Area" to confirm position
@@ -143,7 +143,7 @@ Right-click on either the main form's control panel or the compact UI's title ba
 2. Verify WebView2 Runtime is installed
 3. Ensure firewall isn't blocking connection to shalazam.info
 4. Try "Reset All Arrows" to refresh map
-5. Try switching maps using the right-click menu
+5. Try switching maps using the right-click context menu
 
 ### Performance Issues
 
