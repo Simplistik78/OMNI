@@ -51,7 +51,7 @@ OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enha
 
 1. Launch OMNI
 2. The application will start in clipboard monitoring mode by default
-3. Use `/loc` or `/jumploc` in-game to see your location on the map
+3. Use `/loc`  in-game to see your location on the map
 
 ### Optional OCR Setup
 
@@ -77,7 +77,7 @@ NOT like this
 ### Coordinate Capture Methods
 
 1. **Clipboard Monitoring (Default)**
-   - Simply use `/loc` or `/jumploc` in game
+   - Simply use `/loc` in game
    - Your position will automatically update on the map
    - No additional setup required
 
