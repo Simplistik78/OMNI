@@ -9,7 +9,7 @@ public class ClipboardMonitorService : IDisposable
     private readonly System.Windows.Forms.Timer _pollTimer;
     private string _lastClipboardText = string.Empty;
     private static readonly Regex JumpLocPattern = new(
-        @"/jumploc\s+(-?\d+\.\d{2})\s+(-?\d+\.\d{2})\s+(-?\d+\.\d{2})\s+(-?\d+)",
+        @"/jumploc\s+(-?\d+[.,]\d{2})\s+(-?\d+[.,]\d{2})\s+(-?\d+[.,]\d{2})\s+(-?\d+)",
         RegexOptions.Compiled
     );
 
@@ -76,19 +76,85 @@ public class ClipboardMonitorService : IDisposable
 
                 if (match.Success)
                 {
+                    // Log all matched groups for debugging
+                    Debug.WriteLine("==================== COORDINATE MATCH DEBUG ====================");
+                    Debug.WriteLine($"Full match: {match.Value}");
+                    Debug.WriteLine($"Group 1 (X): {match.Groups[1].Value}");
+                    Debug.WriteLine($"Group 2 (Z): {match.Groups[2].Value}");
+                    Debug.WriteLine($"Group 3 (Y): {match.Groups[3].Value}");
+                    Debug.WriteLine($"Group 4 (H): {match.Groups[4].Value}");
+                    Debug.WriteLine("System culture: " + System.Globalization.CultureInfo.CurrentCulture.Name);
+                    Debug.WriteLine("System decimal separator: " + System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator);
+
                     // Parse coordinates from "/jumploc X Z Y H" format
-                    if (float.TryParse(match.Groups[1].Value, out float x) &&           // X coordinate
-                        float.TryParse(match.Groups[2].Value, out float _) &&           // Z coordinate (ignored)
-                        float.TryParse(match.Groups[3].Value, out float y) &&           // Y coordinate 
-                        float.TryParse(match.Groups[4].Value, out float heading))       // Heading
+                    // Normalize all decimal separators consistently
+                    string NormalizeDecimal(string input) => input.Replace(",", ".");
+
+                    var xStr = NormalizeDecimal(match.Groups[1].Value);
+                    var zStr = NormalizeDecimal(match.Groups[2].Value);
+                    var yStr = NormalizeDecimal(match.Groups[3].Value);
+                    var headingStr = match.Groups[4].Value;
+
+                    Debug.WriteLine($"Normalized values - X: {xStr}, Z: {zStr}, Y: {yStr}, H: {headingStr}");
+
+                    // Try each field separately with detailed logging
+                    bool xOk = float.TryParse(xStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float x);
+                    bool zOk = float.TryParse(zStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float z);
+                    bool yOk = float.TryParse(yStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float y);
+                    bool hOk = int.TryParse(headingStr, out int heading);
+
+                    Debug.WriteLine($"Parse results - X: {xOk} ({x}), Z: {zOk} ({z}), Y: {yOk} ({y}), H: {hOk} ({heading})");
+
+                    if (xOk && zOk && yOk && hOk)
                     {
                         var coordinates = new Coordinates(x, y, heading);
-                        Debug.WriteLine($"Clipboard coordinates found: {coordinates}");
+                        Debug.WriteLine($"FINAL Coordinates: X={coordinates.X}, Y={coordinates.Y}, H={coordinates.Heading}");
                         CoordinatesFound?.Invoke(this, coordinates);
                     }
                     else
                     {
-                        Debug.WriteLine("Failed to parse coordinates from matched text");
+                        // Try alternate parsing methods for diagnostic purposes
+                        Debug.WriteLine("Attempting alternate parsing methods:");
+
+                        // Try with current culture
+                        Debug.WriteLine("--- Current Culture ---");
+                        float.TryParse(yStr, out float yCurrentCulture);
+                        Debug.WriteLine($"Y with current culture: {yCurrentCulture}");
+
+                        // Try with German culture
+                        var germanCulture = new System.Globalization.CultureInfo("de-DE");
+                        Debug.WriteLine("--- German Culture ---");
+                        float.TryParse(yStr, System.Globalization.NumberStyles.Float, germanCulture, out float yGerman);
+                        Debug.WriteLine($"Y with German culture: {yGerman}");
+
+                        // Try Double parsing (sometimes has better tolerance)
+                        Debug.WriteLine("--- Using Double ---");
+                        if (double.TryParse(yStr, System.Globalization.NumberStyles.Float,
+                                           System.Globalization.CultureInfo.InvariantCulture, out double yDouble))
+                        {
+                            Debug.WriteLine($"Y as double: {yDouble}");
+                        }
+
+                        // Try manual parsing
+                        Debug.WriteLine("--- Manual Parsing ---");
+                        try
+                        {
+                            string[] parts = yStr.Split('.');
+                            if (parts.Length == 2)
+                            {
+                                int integerPart = int.Parse(parts[0]);
+                                int decimalPart = int.Parse(parts[1]);
+                                float manualResult = integerPart + (decimalPart / 100.0f);
+                                Debug.WriteLine($"Y manual parse: {manualResult}");
+                            }
+                        }
+                        catch { }
+
+                        Debug.WriteLine("======== END COORDINATE DEBUG ========");
+                        Debug.WriteLine($"Failed to parse coordinates - X:{xStr}, Z:{zStr}, Y:{yStr}, H:{headingStr}");
                     }
                 }
                 else

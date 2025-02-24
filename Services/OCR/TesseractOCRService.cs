@@ -14,9 +14,12 @@ namespace OMNI.Services.OCR
         private bool disposed;
         private readonly object lockObject = new object();
 
-        // Updated regex pattern to better handle negative coordinates
+        // Updated regex pattern to handle both comma and period decimal separators
+        // More flexible to handle: 
+        // - Different numbers of decimal places (1-3)
+        // - Better space handling between coordinates
         private static readonly Regex CoordinatePattern = new(
-            @"^Your location:\s*(-?\d{1,4}\.\d{2})\s+(-?\d{1,4}\.\d{2})\s+(-?\d{1,4}\.\d{2})\s+(\d{1,3})",
+            @"^Your location:\s*(-?\d{1,4}[.,]\d{1,3})\s+(-?\d{1,4}[.,]\d{1,3})\s+(-?\d{1,4}[.,]\d{1,3})\s+(-?\d{1,3})",
             RegexOptions.Compiled
         );
 
@@ -33,7 +36,7 @@ namespace OMNI.Services.OCR
                 engine = new TesseractEngine(tessDataPath, "eng", EngineMode.Default);
                 settings = new OCRSettings
                 {
-                    AllowedCharacters = "Your location:-.0123456789 "  // Added minus sign to allowed characters for Halnir cave cords.
+                    AllowedCharacters = "Your location:-.0123456789, "  // Added comma to allowed characters
                 };
                 ConfigureEngine();
             }
@@ -154,17 +157,105 @@ namespace OMNI.Services.OCR
                 var match = CoordinatePattern.Match(text);
                 Debug.WriteLine($"Attempting to parse coordinates from: {text}");
 
-                if (match.Success &&
-                    float.TryParse(match.Groups[1].Value, out float x) &&
-                    float.TryParse(match.Groups[3].Value, out float y) &&  // Using third group for Y coordinate
-                    float.TryParse(match.Groups[4].Value, out float heading))
+                if (match.Success)
                 {
-                    Debug.WriteLine($"Raw values - X: {match.Groups[1].Value}, Z: {match.Groups[2].Value}, Y: {match.Groups[3].Value}, H: {match.Groups[4].Value}");
-                    Debug.WriteLine($"Parsed coordinates: X={x}, Y={y}, H={heading}");
-                    return new Coordinates(x, y, heading);
-                }
+                    Debug.WriteLine("==================== OCR COORDINATE MATCH DEBUG ====================");
+                    Debug.WriteLine($"Full match: {match.Value}");
+                    Debug.WriteLine($"Group 1 (X): {match.Groups[1].Value}");
+                    Debug.WriteLine($"Group 2 (Z): {match.Groups[2].Value}");
+                    Debug.WriteLine($"Group 3 (Y): {match.Groups[3].Value}");
+                    Debug.WriteLine($"Group 4 (H): {match.Groups[4].Value}");
+                    Debug.WriteLine("System culture: " + System.Globalization.CultureInfo.CurrentCulture.Name);
+                    Debug.WriteLine("System decimal separator: " + System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator);
 
-                Debug.WriteLine("Failed to parse coordinates");
+                    // Normalize all values to use period decimal separator
+                    string NormalizeDecimal(string input) => input.Replace(',', '.');
+
+                    string xStr = NormalizeDecimal(match.Groups[1].Value);
+                    string zStr = NormalizeDecimal(match.Groups[2].Value); // Not used but parse for debug
+                    string yStr = NormalizeDecimal(match.Groups[3].Value);
+                    string headingStr = match.Groups[4].Value;
+
+                    Debug.WriteLine($"Normalized values - X: {xStr}, Z: {zStr}, Y: {yStr}, H: {headingStr}");
+
+                    // Try each field separately with detailed logging
+                    bool xOk = float.TryParse(xStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float x);
+                    bool zOk = float.TryParse(zStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float z);
+                    bool yOk = float.TryParse(yStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float y);
+                    bool hOk = float.TryParse(headingStr, System.Globalization.NumberStyles.Float,
+                                             System.Globalization.CultureInfo.InvariantCulture, out float heading);
+
+                    Debug.WriteLine($"Parse results - X: {xOk} ({x}), Z: {zOk} ({z}), Y: {yOk} ({y}), H: {hOk} ({heading})");
+
+                    if (xOk && zOk && yOk && hOk)
+                    {
+                        var coordinates = new Coordinates(x, y, heading);
+                        Debug.WriteLine($"FINAL OCR Coordinates: X={coordinates.X}, Y={coordinates.Y}, H={coordinates.Heading}");
+                        return coordinates;
+                    }
+                    else
+                    {
+                        // Try alternate parsing methods for diagnostic purposes
+                        Debug.WriteLine("Attempting alternate OCR parsing methods:");
+
+                        // Try with current culture
+                        Debug.WriteLine("--- Current Culture ---");
+                        float.TryParse(yStr, out float yCurrentCulture);
+                        Debug.WriteLine($"Y with current culture: {yCurrentCulture}");
+
+                        // Try with German culture
+                        var germanCulture = new System.Globalization.CultureInfo("de-DE");
+                        Debug.WriteLine("--- German Culture ---");
+                        float.TryParse(yStr, System.Globalization.NumberStyles.Float, germanCulture, out float yGerman);
+                        Debug.WriteLine($"Y with German culture: {yGerman}");
+
+                        // Try Double parsing (sometimes has better tolerance)
+                        Debug.WriteLine("--- Using Double ---");
+                        if (double.TryParse(yStr, System.Globalization.NumberStyles.Float,
+                                           System.Globalization.CultureInfo.InvariantCulture, out double yDouble))
+                        {
+                            Debug.WriteLine($"Y as double: {yDouble}");
+                        }
+
+                        // Try manual parsing as fallback
+                        Debug.WriteLine("--- Manual Parsing ---");
+                        try
+                        {
+                            string[] parts = yStr.Split('.');
+                            if (parts.Length == 2)
+                            {
+                                int integerPart = int.Parse(parts[0]);
+                                int decimalPart = int.Parse(parts[1]);
+                                float manualResult = integerPart + (decimalPart / 100.0f);
+                                Debug.WriteLine($"Y manual parse: {manualResult}");
+
+                                // If manual parsing succeeds where automatic fails,
+                                // and we got valid X and heading, create coordinates
+                                if (!yOk && xOk && hOk)
+                                {
+                                    Debug.WriteLine("Using manually parsed Y value as fallback");
+                                    var coordinates = new Coordinates(x, manualResult, heading);
+                                    Debug.WriteLine($"FALLBACK OCR Coordinates: X={coordinates.X}, Y={coordinates.Y}, H={coordinates.Heading}");
+                                    return coordinates;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Manual parsing failed: {ex.Message}");
+                        }
+
+                        Debug.WriteLine("======== END OCR COORDINATE DEBUG ========");
+                        Debug.WriteLine($"Failed to parse coordinates - X:{xStr}, Z:{zStr}, Y:{yStr}, H:{headingStr}");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine("Failed to parse coordinates - regex did not match");
+                }
                 return null;
             }
             catch (Exception ex)

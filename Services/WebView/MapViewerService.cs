@@ -524,7 +524,12 @@ if (document.readyState === 'loading') {
 
             try
             {
-                Debug.WriteLine($"Adding marker: X={x}, Y={y}, H={heading}");
+                // Format numbers using invariant culture to ensure consistent decimal separators
+                string xStr = x.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                string yStr = y.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                string headingStr = heading.ToString("F0", System.Globalization.CultureInfo.InvariantCulture);
+
+                Debug.WriteLine($"Adding marker with invariant culture format: X={xStr}, Y={yStr}, H={headingStr}");
 
                 // Check and reinitialize if needed
                 string checkScript = @"
@@ -549,12 +554,12 @@ if (document.readyState === 'loading') {
                     return "Error: Map system not ready";
                 }
 
-                // Add the marker
+                // Add the marker using the invariant culture formatted strings
                 string script = $@"
             (async function() {{
                 try {{
                     await new Promise(resolve => setTimeout(resolve, 500));
-                    return window.gameMarker.add({x}, {y}, {heading});
+                    return window.gameMarker.add({xStr}, {yStr}, {headingStr});
                 }} catch (error) {{
                     console.error('Error in marker addition:', error);
                     return 'Error: ' + error.message;

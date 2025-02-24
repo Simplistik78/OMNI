@@ -39,5 +39,20 @@ public class Coordinates : IEquatable<Coordinates>
         Math.Round(Heading / HeadingTolerance)
     );
 
-    public override string ToString() => $"X: {X:F2}, Y: {Y:F2}, Heading: {Heading:F0}°";
+    // Use invariant culture to ensure consistency for E.U based folks
+    public override string ToString() => string.Format(
+        System.Globalization.CultureInfo.InvariantCulture,
+        "X: {0:F2}, Y: {1:F2}, Heading: {2:F0}°",
+        X, Y, Heading
+    );
+
+    // Added a method to get a consistent string representation for mapping
+    public string ToInvariantString()
+    {
+        return string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "{0:F2},{1:F2},{2:F0}",
+            X, Y, Heading
+        );
+    }
 }
