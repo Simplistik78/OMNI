@@ -88,7 +88,49 @@ namespace OMNI.Services.WebView
                 _environmentLock.Release();
             }
         }
+        public async Task SetMapOpacity(float opacity)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!_isInitialized || _webView.CoreWebView2 == null)
+            {
+                return;
+            }
 
+            try
+            {
+                string script = $@"
+        (function() {{
+            try {{
+                // Apply opacity to map container and related elements
+                const mapContainer = document.getElementById('map');
+                if (!mapContainer) return 'Map container not found';
+                
+                // Apply opacity to map container
+                mapContainer.style.opacity = '{opacity.ToString(System.Globalization.CultureInfo.InvariantCulture)}';
+                
+                // Also handle any leaflet elements that should remain fully visible
+                const controlElements = document.querySelectorAll('.leaflet-control-container');
+                controlElements.forEach(el => {{
+                    el.style.opacity = '1'; // Keep controls fully visible
+                }});
+                
+                return 'Map opacity updated successfully';
+            }} catch (error) {{
+                console.error('Error setting map opacity:', error);
+                return 'Error: ' + error.message;
+            }}
+        }})();
+        ";
+
+                var result = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                Debug.WriteLine($"Map opacity result: {result.Trim('"')}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error setting map opacity: {ex}");
+                OnErrorOccurred(ex);
+            }
+        }
         private string GetInitScript()
         {
             string compactModeCss = _isCompactMode ? @"

@@ -30,7 +30,8 @@ public partial class MainForm : Form
     private const int MinProcessingInterval = 1000; // Minimum time between updates in milliseconds
     private int _currentMapId = 1; // Default to world map
     private readonly ClipboardMonitorService _clipboardService;
-
+    private bool _isDarkMode = true;
+    
     // UI Controls initialized directly
     private readonly Panel _controlPanel = new();
     private readonly FlowLayoutPanel _historyPanel = new();
@@ -39,7 +40,6 @@ public partial class MainForm : Form
     private readonly NumericUpDown _captureWidth = new();
     private readonly NumericUpDown _captureHeight = new();
     private readonly Button _startStopButton = new();
-    private readonly Button _singleCaptureButton = new();
     private readonly Button _testCaptureButton = new();
     private readonly Button _resetPinsButton = new();
     private readonly Button _overlayButton = new();
@@ -122,51 +122,24 @@ public partial class MainForm : Form
         this.MinimumSize = new Size(800, 800);
         this.Size = new Size(1024, 968);
         this.StartPosition = FormStartPosition.CenterScreen;
-        // Add map selection context menu
-        var contextMenu = new ContextMenuStrip();
-        var mapMenu = new ToolStripMenuItem("Select Map");
-        mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
-        {
-    new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
-    new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
-    new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
-        });
-        contextMenu.Items.Add(mapMenu);
-        var aboutButton = new Button
-        {
-            Text = "About",
-            Dock = DockStyle.Top,
-            Height = 30,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(244, 244, 244),
-            Margin = new Padding(0, 5, 0, 5)
-        };
-
-        aboutButton.Click += (s, e) =>
-        {
-            using var aboutDialog = new AboutDialog();
-            aboutDialog.ShowDialog(this);
-        };
-
-
 
         // Configure panels
         _webView.Dock = DockStyle.Fill;
-         _controlPanel.Dock = DockStyle.Left;
+        _controlPanel.Dock = DockStyle.Left;
         _controlPanel.Width = 280;
         _controlPanel.MinimumSize = new Size(280, 0);
         _controlPanel.MaximumSize = new Size(280, 0);
         _controlPanel.Padding = new Padding(10);
         _controlPanel.AutoScroll = true;
 
-        _historyPanel.Dock = DockStyle.Fill; 
+        _historyPanel.Dock = DockStyle.Fill;
         _historyPanel.AutoScroll = true;
         _historyPanel.FlowDirection = FlowDirection.LeftToRight;
         _historyPanel.WrapContents = true;
-        _historyPanel.BackColor = Color.White;  
+        _historyPanel.BackColor = Color.White;
         _historyPanel.BorderStyle = BorderStyle.FixedSingle;
         _historyPanel.Padding = new Padding(10);
-        _historyPanel.Visible = true;  
+        _historyPanel.Visible = true;
 
         var mapContainer = new Panel
         {
@@ -181,13 +154,50 @@ public partial class MainForm : Form
             Width = 4
         };
 
-        // Add controls in the correct order
-        
+        // controls ordered 
         this.Controls.Add(mapContainer);
         this.Controls.Add(_historyPanel);
         this.Controls.Add(splitter);
         this.Controls.Add(_controlPanel);
-        
+
+        // context menu
+        var contextMenu = new ContextMenuStrip();
+
+        // Add map selection menu
+        var mapMenu = new ToolStripMenuItem("Select Map");
+        mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
+        {
+        new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
+        new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
+        new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
+        });
+
+        // Add capture interval menu
+        var intervalMenu = new ToolStripMenuItem("Capture Interval");
+        foreach (var interval in new[] { 500, 1000, 2000, 5000 })
+        {
+            var item = new ToolStripMenuItem($"{interval}ms");
+            item.Click += (s, e) =>
+            {
+                _captureTimer.Interval = interval;
+                SaveCurrentSettings();
+            };
+            intervalMenu.DropDownItems.Add(item);
+        }
+
+        //  menu items
+        contextMenu.Items.AddRange(new ToolStripItem[] {
+        mapMenu,
+        new ToolStripSeparator(),
+        intervalMenu,
+        new ToolStripSeparator(),
+        new ToolStripMenuItem("Reset Position", null, (s, e) => ResetPosition()),
+        new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys()),
+        new ToolStripSeparator(),
+        new ToolStripMenuItem("Check for Updates", null, async (s, e) => await CheckForUpdatesManually())
+    });
+
+        _controlPanel.ContextMenuStrip = contextMenu;
     }
     private async Task SwitchMap(int mapId)
     {
@@ -277,7 +287,7 @@ public partial class MainForm : Form
             using var aboutDialog = new AboutDialog();
             aboutDialog.ShowDialog(this);
         };
-        
+
 
         _statusLabel.AutoSize = false;
         _statusLabel.Dock = DockStyle.Top;
@@ -323,20 +333,35 @@ public partial class MainForm : Form
         _startStopButton.FlatStyle = FlatStyle.Standard;
         _startStopButton.BackColor = SystemColors.Control;
 
-        _singleCaptureButton.Text = "Single Capture";
-        _singleCaptureButton.Dock = DockStyle.Top;
-        _singleCaptureButton.Height = 30;
-        _singleCaptureButton.Margin = new Padding(0, 5, 0, 0);
-        _singleCaptureButton.FlatStyle = FlatStyle.Standard;
-        _singleCaptureButton.BackColor = SystemColors.Control;
-
+        
         _testCaptureButton.Text = "Test Capture Area";
         _testCaptureButton.Dock = DockStyle.Top;
         _testCaptureButton.Height = 30;
-        _testCaptureButton.Margin = new Padding(0, 5, 0, 10);
+        _testCaptureButton.Margin = new Padding(0, 5, 0, 0);
         _testCaptureButton.FlatStyle = FlatStyle.Standard;
         _testCaptureButton.BackColor = SystemColors.Control;
-        _controlPanel.Controls.Add(_testModeButton);//test button for out of game testing
+
+        // dark mode toggle button
+        var darkModeButton = new Button
+        {
+            Text = _isDarkMode ? "Light Mode" : "Dark Mode",
+            Dock = DockStyle.Top,
+            Height = 30,
+            Margin = new Padding(0, 5, 0, 0),
+            FlatStyle = FlatStyle.Standard,
+            BackColor = _isDarkMode ? Color.SlateGray : Color.LightGray,
+            ForeColor = _isDarkMode ? Color.White : Color.Black
+        };
+
+        darkModeButton.Click += (s, e) => {
+            _isDarkMode = !_isDarkMode;
+            darkModeButton.Text = _isDarkMode ? "Light Mode" : "Dark Mode";
+            darkModeButton.BackColor = _isDarkMode ? Color.SlateGray : Color.LightGray;
+            darkModeButton.ForeColor = _isDarkMode ? Color.White : Color.Black;
+            ApplyDarkMode(_isDarkMode);
+        };
+
+        
 
         var numericTable = new TableLayoutPanel
         {
@@ -361,20 +386,184 @@ public partial class MainForm : Form
 
         captureGroupBox.Controls.Add(numericTable);
 
-
         _controlPanel.Controls.Clear();
         _controlPanel.Controls.AddRange(new Control[] {
-    aboutButton,
-    _statusLabel,
-    captureGroupBox,
-    _testCaptureButton,
-    _singleCaptureButton,
-    _startStopButton,
-    _resetPinsButton,
-    _overlayButton,
-    _compactUIButton,
-    _historyPanel  
-});
+        aboutButton,
+        _statusLabel,
+        captureGroupBox,           // buttons in order 
+        _testCaptureButton,        // Test capture button moved up
+        _startStopButton,          // Start/stop capture button
+        _resetPinsButton,          // Reset pins button
+        _overlayButton,            // Position capture window button
+        darkModeButton,            // Added dark mode toggle
+        _compactUIButton,          // Compact UI button
+        _historyPanel              // History panel
+    });
+
+        // Apply initial dark mode setting
+        ApplyDarkMode(_isDarkMode);
+    }
+
+
+    private void ApplyDarkMode(bool darkMode)
+    {
+        if (darkMode)
+        {
+            // Dark mode
+            // Main panel - darker background
+            _controlPanel.BackColor = Color.FromArgb(40, 40, 45);
+
+            // History panel - lighter to stand out
+            _historyPanel.BackColor = Color.FromArgb(70, 70, 75);
+
+            // Status labels
+            _statusLabel.BackColor = Color.FromArgb(55, 55, 60);
+            _statusLabel.ForeColor = Color.White;
+            _lastCoordinatesLabel.ForeColor = Color.White;
+
+            // Standard button color for most buttons
+            Color standardButtonColor = Color.FromArgb(70, 130, 180); // Steel Blue
+
+            
+            _startStopButton.BackColor = standardButtonColor;
+            _startStopButton.ForeColor = Color.White;
+
+            _testCaptureButton.BackColor = standardButtonColor;
+            _testCaptureButton.ForeColor = Color.White;
+
+            
+            _resetPinsButton.BackColor = Color.LightCoral;
+            _resetPinsButton.ForeColor = Color.White;
+
+            _overlayButton.BackColor = standardButtonColor;
+            _overlayButton.ForeColor = Color.White;
+
+            
+            
+            _compactUIButton.ForeColor = Color.White;
+
+            
+            foreach (Control control in _controlPanel.Controls)
+            {
+                if (control is GroupBox groupBox)
+                {
+                    groupBox.ForeColor = Color.White;
+                    groupBox.BackColor = Color.FromArgb(50, 50, 55);
+
+                    foreach (Control innerControl in groupBox.Controls)
+                    {
+                        if (innerControl is Label label)
+                        {
+                            label.ForeColor = Color.White;
+                        }
+                        else if (innerControl is Button button)
+                        {
+                            button.BackColor = standardButtonColor;
+                            button.ForeColor = Color.White;
+                        }
+                        else if (innerControl is TableLayoutPanel tableLayoutPanel)
+                        {
+                            tableLayoutPanel.BackColor = Color.FromArgb(50, 50, 55);
+                            foreach (Control tableControl in tableLayoutPanel.Controls)
+                            {
+                                if (tableControl is Label tableLabel)
+                                {
+                                    tableLabel.ForeColor = Color.White;
+                                    tableLabel.BackColor = Color.FromArgb(50, 50, 55);
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (control is Button button)
+                {
+                    // Only modify buttons that haven't already been handled individually
+                    if (button != _startStopButton && button != _testCaptureButton &&
+                        button != _resetPinsButton && button != _overlayButton &&
+                        button != _compactUIButton)
+                    {
+                        button.BackColor = standardButtonColor;
+                        button.ForeColor = Color.White;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Light mode
+            _controlPanel.BackColor = SystemColors.Control;
+            _historyPanel.BackColor = Color.White;
+            _statusLabel.BackColor = Color.FromArgb(240, 240, 240);
+            _statusLabel.ForeColor = Color.Black;
+            _lastCoordinatesLabel.ForeColor = Color.Black;
+
+            // Reset button colors
+            _startStopButton.BackColor = SystemColors.Control;
+            _startStopButton.ForeColor = Color.Black;
+
+            _testCaptureButton.BackColor = SystemColors.Control;
+            _testCaptureButton.ForeColor = Color.Black;
+
+            _resetPinsButton.BackColor = Color.LightCoral;
+            _resetPinsButton.ForeColor = Color.White;
+
+            _overlayButton.BackColor = SystemColors.ActiveCaption;
+            _overlayButton.ForeColor = Color.Black;
+
+            _compactUIButton.BackColor = SystemColors.ControlDark;
+            _compactUIButton.ForeColor = Color.White;
+
+            // Update form elements back to light mode
+            foreach (Control control in _controlPanel.Controls)
+            {
+                if (control is GroupBox groupBox)
+                {
+                    groupBox.ForeColor = Color.Black;
+                    groupBox.BackColor = SystemColors.Control;
+
+                    foreach (Control innerControl in groupBox.Controls)
+                    {
+                        if (innerControl is Label label)
+                        {
+                            label.ForeColor = Color.Black;
+                        }
+                        else if (innerControl is Button button)
+                        {
+                            button.BackColor = SystemColors.Control;
+                            button.ForeColor = Color.Black;
+                        }
+                        else if (innerControl is TableLayoutPanel tableLayoutPanel)
+                        {
+                            tableLayoutPanel.BackColor = SystemColors.Control;
+                            foreach (Control tableControl in tableLayoutPanel.Controls)
+                            {
+                                if (tableControl is Label tableLabel)
+                                {
+                                    tableLabel.ForeColor = Color.Black;
+                                    tableLabel.BackColor = SystemColors.Control;
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (control is Button button)
+                {
+                    // Only modify buttons that haven't already been handled individually
+                    if (button != _startStopButton && button != _testCaptureButton &&
+                        button != _resetPinsButton && button != _overlayButton &&
+                        button != _compactUIButton)
+                    {
+                        button.BackColor = SystemColors.Control;
+                        button.ForeColor = Color.Black;
+                    }
+                }
+            }
+        }
+
+        // Save dark mode preference
+        var settings = _settingsService.CurrentSettings;
+        settings.IsDarkMode = darkMode;
+        _settingsService.SaveSettings(settings);
     }
     private void CompactUIButton_Click(object? sender, EventArgs e)
     {
@@ -465,7 +654,7 @@ public partial class MainForm : Form
         }
         base.Dispose(disposing);
     }
-
+    
     public async Task StartCapture()
     {
         if (_isCapturing) return;
@@ -552,7 +741,6 @@ public partial class MainForm : Form
     private void SetupEventHandlers()
     {
         _startStopButton.Click += StartStopButton_Click;
-        _singleCaptureButton.Click += SingleCaptureButton_Click;
         _testCaptureButton.Click += TestCaptureButton_Click;
         _resetPinsButton.Click += ResetPinsButton_Click;
         _overlayButton.Click += OverlayButton_Click;
@@ -994,6 +1182,10 @@ public partial class MainForm : Form
             _captureHeight.Value = Math.Max(_captureHeight.Minimum, Math.Min(_captureHeight.Maximum, settings.CaptureHeight));
             _captureTimer.Interval = settings.CaptureInterval;
             _captureTimer.Interval = Math.Max(500, _settingsService.CurrentSettings.CaptureInterval); // Minimum 500ms
+
+            // Load dark mode setting
+            _isDarkMode = settings.IsDarkMode;
+
             // Load MainForm settings
             if (settings.MainFormSize.Width > 0 && settings.MainFormSize.Height > 0)
             {
@@ -1011,7 +1203,7 @@ public partial class MainForm : Form
             }
 
             Debug.WriteLine($"Loaded settings: CaptureX={settings.CaptureX}, CaptureY={settings.CaptureY}, CaptureWidth={settings.CaptureWidth}, CaptureHeight={settings.CaptureHeight}");
-            Debug.WriteLine($"Loaded MainForm settings: Size={this.Size}, Location={this.Location}");
+            Debug.WriteLine($"Loaded MainForm settings: Size={this.Size}, Location={this.Location}, DarkMode={_isDarkMode}");
 
             // Restore Compact UI if it was enabled
             if (settings.CompactUIEnabled)
@@ -1019,6 +1211,9 @@ public partial class MainForm : Form
                 CompactUIButton_Click(null, EventArgs.Empty);
             }
         }
+
+        // Apply dark mode based on loaded setting
+        ApplyDarkMode(_isDarkMode);
     }
 
 
@@ -1076,7 +1271,61 @@ public partial class MainForm : Form
         _captureHistory.Clear();
         _historyPanel.Controls.Clear();
     }
-       
+    private async Task CheckForUpdatesManually()
+    {
+        try
+        {
+            _statusLabel.Text = "Checking for updates...";
+
+            var versionCheckService = new VersionCheckService(
+    "Simplistik78",
+    "OMNI",
+    GetAppVersion.FromAboutDialog(),
+    includePreReleases: true);  // Set to true to include pre-releases , change in Program.cs as well.
+
+            bool updateFound = false;
+
+            versionCheckService.UpdateAvailable += (s, e) => {
+                updateFound = true;
+                using var updateDialog = new UpdateNotificationDialog(
+                    e.NewVersion,
+                    e.ReleaseUrl,
+                    e.ReleaseNotes);
+                updateDialog.ShowDialog(this);
+            };
+
+            await versionCheckService.CheckForUpdatesAsync();
+
+            // Update timestamp regardless of result
+            var settings = _settingsService.CurrentSettings;
+            settings.LastUpdateCheck = DateTime.Now;
+            _settingsService.SaveSettings(settings);
+
+            if (!updateFound)
+            {
+                _statusLabel.Text = "Your application is up to date";
+                MessageBox.Show(
+                    $"You are using the latest version of OMNI (v{Application.ProductVersion}).",
+                    "No Updates Available",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                _statusLabel.Text = "Update available";
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusLabel.Text = "Update check failed";
+            Debug.WriteLine($"Error checking for updates: {ex.Message}");
+            MessageBox.Show(
+                $"Error checking for updates: {ex.Message}",
+                "Update Check Failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
 
     private void MainForm_Load(object sender, EventArgs e)
     {

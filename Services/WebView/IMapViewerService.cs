@@ -12,5 +12,6 @@ namespace OMNI.Services.WebView
         Task<string> AddMarkerAsync(float x, float y, float heading);
         Task<string> ClearMarkersAsync();
         Task SetKeepHistoryAsync(bool keepHistory);
+        Task SetMapOpacity(float opacity);
     }
 }

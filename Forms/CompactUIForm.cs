@@ -24,7 +24,10 @@ public partial class CompactUIForm : Form, ICaptureForm
     private readonly Panel _controlStrip;
     private readonly Panel _gripPanel;
     private readonly ClipboardMonitorService _clipboardService;
-
+    private TrackBar _opacitySlider;
+    private Label _opacityLabel;
+    
+    
     private readonly NumericUpDown _captureX = new()
     {
         Minimum = 0,
@@ -102,7 +105,7 @@ public partial class CompactUIForm : Form, ICaptureForm
         {
             Height = 10,  // Thin strip at the top
             Dock = DockStyle.Top,
-            BackColor = Color.FromArgb(30, 30, 30),  // Match your form's theme
+            BackColor = Color.FromArgb(30, 30, 30),  // Match black form's theme
             Cursor = Cursors.SizeAll  // Always show move cursor
         };
 
@@ -135,7 +138,32 @@ public partial class CompactUIForm : Form, ICaptureForm
                 }
             }
         };
+        //opacity slider controls for mini map
+        _opacitySlider = new TrackBar
+        {
+            Minimum = 20,      // 20% minimum opacity
+            Maximum = 100,     // 100% maximum opacity
+            Value = 100,       // Default to 100% opacity
+            TickFrequency = 10,
+            Width = 100,
+            Height = 20,
+            Dock = DockStyle.None,
+            AutoSize = false
+        };
 
+        _opacityLabel = new Label
+        {
+            Text = "Opacity:",
+            AutoSize = true,
+            ForeColor = Color.White,
+            TextAlign = ContentAlignment.MiddleRight
+        };
+        var opacityPanel = new Panel
+        {
+            Height = 30,
+            Dock = DockStyle.None,
+            AutoSize = true
+        };
         SetupCustomComponents();
         SetupEventHandlers();
         LoadSettings();
@@ -174,6 +202,7 @@ public partial class CompactUIForm : Form, ICaptureForm
 
     protected override async void OnLoad(EventArgs e)
     {
+        await SetMapOpacity(_opacitySlider.Value / 100.0f);
         base.OnLoad(e);
         try
         {
@@ -209,18 +238,37 @@ public partial class CompactUIForm : Form, ICaptureForm
         var mapMenu = new ToolStripMenuItem("Select Map");
         mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
         {
-        new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
-        new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
-        new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
+    new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
+    new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
+    new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
         });
         contextMenu.Items.Add(mapMenu);
+
+        // Opacity submenu to context menu
+        var opacityMenu = new ToolStripMenuItem("Map Opacity");
+
+        // preset opacity options so we dont loose the window to some black hole in space or something.
+        foreach (var opacity in new[] { 20, 40, 60, 80, 100 })
+        {
+            var item = new ToolStripMenuItem($"{opacity}%");
+            item.Click += (s, e) =>
+            {
+                _opacitySlider.Value = opacity;
+                // ValueChanged event should handle the rest..
+            };
+            opacityMenu.DropDownItems.Add(item);
+        }
+
+        // Add opacity menu to main context menu
+        contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(opacityMenu);
 
         // Control strip setup
         _controlStrip.Height = 40;
         _controlStrip.Dock = DockStyle.Top;
         _controlStrip.BackColor = Color.FromArgb(30, 30, 30);
         _controlStrip.Padding = new Padding(5);
-        _controlStrip.ContextMenuStrip = contextMenu;  // Add context menu to control strip
+        _controlStrip.ContextMenuStrip = contextMenu;
 
         // Set up the WebView2 control
         _webView.Dock = DockStyle.Fill;
@@ -235,38 +283,37 @@ public partial class CompactUIForm : Form, ICaptureForm
         contentPanel.Controls.Add(_webView);
 
         // Configure buttons
-        _toggleCaptureButton.Text = "Start Capture";
-        _toggleCaptureButton.Width = 100;
+        _toggleCaptureButton.Text = "Start";
+        _toggleCaptureButton.Width = 70;
         _toggleCaptureButton.Height = 30;
         _toggleCaptureButton.FlatStyle = FlatStyle.Flat;
         _toggleCaptureButton.BackColor = Color.FromArgb(60, 60, 60);
         _toggleCaptureButton.ForeColor = Color.White;
         _toggleCaptureButton.Location = new Point(10, 5);
 
-        _positionButton.Text = "Set Position";
-        _positionButton.Width = 100;
+        _positionButton.Text = "Position";
+        _positionButton.Width = 80;
         _positionButton.Height = 30;
         _positionButton.FlatStyle = FlatStyle.Flat;
         _positionButton.BackColor = Color.FromArgb(60, 60, 60);
         _positionButton.ForeColor = Color.White;
-        _positionButton.Location = new Point(120, 5);
+        _positionButton.Location = new Point(_toggleCaptureButton.Right + 5, 5);
 
-        // Configure status labels
-        _statusLabel.AutoSize = false;
-        _statusLabel.ForeColor = Color.White;
-        _statusLabel.Location = new Point(_positionButton.Right + 10, 5);
-        _statusLabel.Width = _controlStrip.Width - _positionButton.Right - 50;
-        _statusLabel.Height = 20;
-        _statusLabel.Text = "Ready";
-        _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
+        // Configure slider settings
+        _opacitySlider.Minimum = 20;
+        _opacitySlider.Maximum = 100;
+        _opacitySlider.Value = 100;
+        _opacitySlider.TickFrequency = 10;
+        _opacitySlider.Width = 100;
+        _opacitySlider.Height = 30;
+        _opacitySlider.Location = new Point(_positionButton.Right + 10, 5);
 
-        _lastCoordinatesLabel.AutoSize = false;
-        _lastCoordinatesLabel.ForeColor = Color.White;
-        _lastCoordinatesLabel.Location = new Point(_positionButton.Right + 10, 25);
-        _lastCoordinatesLabel.Width = _controlStrip.Width - _positionButton.Right - 50;
-        _lastCoordinatesLabel.Height = 20;
-        _lastCoordinatesLabel.Text = "No coordinates";
-        _lastCoordinatesLabel.TextAlign = ContentAlignment.MiddleLeft;
+        // Add tooltip for opacity slider
+        var toolTip = new ToolTip();
+        toolTip.SetToolTip(_opacitySlider, "Map Opacity");
+
+        //event handler for slider
+        _opacitySlider.ValueChanged += OpacitySlider_ValueChanged;
 
         // Add close button
         var closeButton = new Button
@@ -280,12 +327,11 @@ public partial class CompactUIForm : Form, ICaptureForm
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
 
-        // Add controls to control strip
+        // Add controls to control strip (without status labels)
         _controlStrip.Controls.AddRange(new Control[] {
         _toggleCaptureButton,
         _positionButton,
-        _statusLabel,
-        _lastCoordinatesLabel,
+        _opacitySlider,
         closeButton
     });
 
@@ -526,6 +572,46 @@ public partial class CompactUIForm : Form, ICaptureForm
             _statusLabel.Text = $"Error: {ex.Message}";
         }
     }
+    private async void OpacitySlider_ValueChanged(object? sender, EventArgs e)
+    {
+        try
+        {
+            // Get the current opacity value (20-100)
+            int opacityValue = _opacitySlider.Value;
+
+            // Scale to 0.2-1.0 range for CSS
+            float opacityNormalized = opacityValue / 100.0f;
+
+            // Update the form opacity for the window itself
+            this.Opacity = opacityNormalized;
+
+            // Update the map opacity via JavaScript
+            await SetMapOpacity(opacityNormalized);
+
+            // Save to settings
+            var settings = _settingsService.CurrentSettings;
+            settings.CompactUIOpacity = opacityValue;
+            _settingsService.SaveSettings(settings);
+
+            Debug.WriteLine($"Map opacity set to {opacityValue}%");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error setting opacity: {ex.Message}");
+        }
+    }
+    private async Task SetMapOpacity(float opacity)
+    {
+        try
+        {
+            // Update only the map opacity, not the entire window
+            await _mapViewerService.SetMapOpacity(opacity);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error setting opacity: {ex.Message}");
+        }
+    }
     private void LoadSettings()
     {
         var settings = _settingsService.CurrentSettings;
@@ -555,7 +641,15 @@ public partial class CompactUIForm : Form, ICaptureForm
 
             this.Size = new Size(width, height);
         }
-
+        if (settings.CompactUIOpacity > 0)
+        {
+            _opacitySlider.Value = settings.CompactUIOpacity;
+            this.Opacity = settings.CompactUIOpacity / 100.0f;
+        }
+        else
+        {
+            _opacitySlider.Value = 100; // Default to 100% opacity
+        }
         if (settings.CompactUILocation != Point.Empty)
         {
             var targetScreen = Screen.FromPoint(settings.CompactUILocation);

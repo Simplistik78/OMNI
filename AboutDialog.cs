@@ -32,7 +32,7 @@ namespace OMNI.Forms
             // Create version label
             var versionLabel = new Label
             {
-                Text = "Version 1.2.7",
+                Text = "Version 1.3.8",
                 Location = new Point(20, titleLabel.Bottom + 10),
                 AutoSize = true
             };
