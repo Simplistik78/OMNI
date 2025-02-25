@@ -18,7 +18,7 @@ An advanced Windows Forms application that provides real-time coordinate trackin
 
 OMNI (Overlay Map & Navigation Interface) is a specialized tool designed to enhance the gaming experience in Pantheon: Rise of the Fallen by providing real-time coordinate tracking and visualization. It offers two methods of coordinate capture:
 
-1. Clipboard Monitoring (Default): Automatically captures coordinates when using `/loc` or `/jumploc` commands in-game
+1. Clipboard Monitoring (Default): Automatically captures coordinates when using `/loc` command in-game
 2. OCR-based capture: Captures coordinates by reading them directly from the screen
 
 ## Features
