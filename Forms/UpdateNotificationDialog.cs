@@ -18,8 +18,8 @@ namespace OMNI.Forms
             _releaseUrl = releaseUrl;
             _releaseNotes = releaseNotes;
 
-            InitializeComponent(); 
-            ConfigureCustomComponents(); 
+            InitializeComponent();
+            ConfigureCustomComponents();
         }
 
         private void ConfigureCustomComponents()
@@ -30,7 +30,7 @@ namespace OMNI.Forms
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MinimizeBox = false;
             this.MaximizeBox = false;
-            this.Size = new Size(500, 400);
+            this.Size = new Size(500, 450);
             this.Font = new Font(this.Font.FontFamily, 9f);
             this.Icon = SystemIcons.Information;
 
@@ -48,7 +48,7 @@ namespace OMNI.Forms
             // Current version label
             var currentVersionLabel = new Label
             {
-                Text = $"You're currently using v{Application.ProductVersion}",
+                Text = $"You're currently using v{GetAppVersion.FromAboutDialog()}",
                 TextAlign = ContentAlignment.MiddleCenter,
                 Dock = DockStyle.Top,
                 Height = 30
@@ -75,60 +75,65 @@ namespace OMNI.Forms
                 Margin = new Padding(10)
             };
 
-            
-            var buttonPanel = new Panel
+            // Create a flow layout panel for the buttons
+            var buttonFlowPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 50
+                Height = 50,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(10),
+                AutoSize = true
             };
 
             var downloadButton = new Button
             {
                 Text = "Download Update",
-                Size = new Size(150, 30),
-                Location = new Point(buttonPanel.Width / 2 - 160, 10),
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-                BackColor = Color.FromArgb(70, 130, 180) // Steel Blue match buttons
+                Size = new Size(140, 30),
+                Margin = new Padding(10, 0, 0, 0)
             };
 
             var remindLaterButton = new Button
             {
                 Text = "Remind Me Later",
-                Size = new Size(150, 30),
-                Location = new Point(buttonPanel.Width / 2 + 10, 10),
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+                Size = new Size(140, 30),
+                Margin = new Padding(10, 0, 0, 0)
             };
 
-            // Checkbox for automatic chickidy checks
+            // Add buttons to the flow panel
+            buttonFlowPanel.Controls.Add(downloadButton);
+            buttonFlowPanel.Controls.Add(remindLaterButton);
+
+            // Create a panel for the checkbox
+            var checkboxPanel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 40
+            };
+
             var autoCheckCheckBox = new CheckBox
             {
-                Text = "Automatically check for updates",
+                Text = "Automatically check for updates once daily",
                 Checked = true,
-                Location = new Point(10, 15),
-                AutoSize = true,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+                Location = new Point(10, 10),
+                AutoSize = true
             };
 
-            buttonPanel.Controls.AddRange(new Control[] {
-                downloadButton,
-                remindLaterButton,
-                autoCheckCheckBox
-            });
+            checkboxPanel.Controls.Add(autoCheckCheckBox);
 
-            // Clear existing controls (if any)
+            // Clear existing controls and add new ones
             this.Controls.Clear();
-
-            
             this.Controls.AddRange(new Control[] {
-                titleLabel,
-                currentVersionLabel,
-                releaseNotesLabel,
-                releaseNotesTextBox,
-                buttonPanel
-            });
+        titleLabel,
+        currentVersionLabel,
+        releaseNotesLabel,
+        releaseNotesTextBox,
+        checkboxPanel,
+        buttonFlowPanel
+    });
 
             // Event handlers
-            downloadButton.Click += (s, e) => {
+            downloadButton.Click += (s, e) =>
+            {
                 try
                 {
                     Process.Start(new ProcessStartInfo
@@ -146,12 +151,14 @@ namespace OMNI.Forms
                 }
             };
 
-            remindLaterButton.Click += (s, e) => {
+            remindLaterButton.Click += (s, e) =>
+            {
                 this.DialogResult = DialogResult.Cancel;
                 this.Close();
             };
 
-            autoCheckCheckBox.CheckedChanged += (s, e) => {
+            autoCheckCheckBox.CheckedChanged += (s, e) =>
+            {
                 var settings = new SettingsService().CurrentSettings;
                 settings.AutoCheckForUpdates = autoCheckCheckBox.Checked;
                 new SettingsService().SaveSettings(settings);

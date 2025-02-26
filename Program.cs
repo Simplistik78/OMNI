@@ -43,58 +43,12 @@ internal static class Program
 
             // Start with normal mode
             _currentForm = new MainForm(_ocrService, _settingsService);
+
+            // Set up version checking BEFORE running the application
+            SetupVersionChecking();
+
+            // Run the application
             Application.Run(_currentForm);
-
-            // Version checking service
-            var versionCheckService = new VersionCheckService(
-    "Simplistik78",
-    "OMNI",
-    GetAppVersion.FromAboutDialog(),
-    includePreReleases: true);  // Set to true to include pre-releases, toggle in MainForm as well.
-
-            // Check for updates if auto-check is enabled
-            if (_settingsService.CurrentSettings.AutoCheckForUpdates)
-            {
-                // Only check once per day
-                if (DateTime.Now.Subtract(_settingsService.CurrentSettings.LastUpdateCheck).TotalDays >= 1)
-                {
-                    Task.Run(async () => {
-                        try
-                        {
-                            // Add a small delay to let the application start up first
-                            await Task.Delay(5000);
-
-                            versionCheckService.UpdateAvailable += (s, e) => {
-                                try
-                                {
-                                    _currentForm?.Invoke(() => {
-                                        using var updateDialog = new UpdateNotificationDialog(
-                                            e.NewVersion,
-                                            e.ReleaseUrl,
-                                            e.ReleaseNotes);
-                                        updateDialog.ShowDialog(_currentForm);
-                                    });
-                                }
-                                catch (Exception ex)
-                                {
-                                    Debug.WriteLine($"Error showing update dialog: {ex.Message}");
-                                }
-                            };
-
-                            await versionCheckService.CheckForUpdatesAsync();
-
-                            // Update the last check timestamp
-                            var settings = _settingsService.CurrentSettings;
-                            settings.LastUpdateCheck = DateTime.Now;
-                            _settingsService.SaveSettings(settings);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"Error checking for updates: {ex.Message}");
-                        }
-                    });
-                }
-            }
         }
         catch (Exception ex)
         {
@@ -106,6 +60,69 @@ internal static class Program
         }
     }
 
+    private static void SetupVersionChecking()
+    {
+        // Version checking service ,toggle setting in MainForm as well!
+        var versionCheckService = new VersionCheckService(
+            "Simplistik78",
+            "OMNI",
+            GetAppVersion.FromAboutDialog(),
+            includePreReleases: true);
+
+        // Check for updates on startup
+        Task.Run(async () => {
+            try
+            {
+                // Add a small delay to let the application start up first
+                await Task.Delay(3000);
+
+                versionCheckService.UpdateAvailable += (s, e) => {
+                    try
+                    {
+                        if (_currentForm != null && !_currentForm.IsDisposed)
+                        {
+                            _currentForm.Invoke(() => {
+                                using var updateDialog = new UpdateNotificationDialog(
+                                    e.NewVersion,
+                                    e.ReleaseUrl,
+                                    e.ReleaseNotes);
+                                updateDialog.ShowDialog(_currentForm);
+                            });
+                        }
+                        else
+                        {
+                            Debug.WriteLine("Cannot show update dialog: Current form is null or disposed");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error showing update dialog: {ex.Message}");
+                    }
+                };
+
+                // Always check for updates at startup
+                Debug.WriteLine("Checking for updates...");
+                await versionCheckService.CheckForUpdatesAsync();
+                Debug.WriteLine("Update check completed");
+
+                // Update the last check timestamp
+                if (_settingsService != null)
+                {
+                    var currentSettings = _settingsService.CurrentSettings;
+                    currentSettings.LastUpdateCheck = DateTime.Now;
+                    _settingsService.SaveSettings(currentSettings);
+                }
+                else
+                {
+                    Debug.WriteLine("Warning: Settings service is null when trying to update last check timestamp");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error checking for updates: {ex.Message}");
+            }
+        });
+    }
 
     private static async void ToggleUIMode()
     {

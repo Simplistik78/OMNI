@@ -1033,11 +1033,12 @@ public partial class MainForm : Form
         }
     }
 
+    
     private void SetupContextMenu()
     {
         var contextMenu = new ContextMenuStrip();
 
-        // Add map selection menu
+        //map selection menu
         var mapMenu = new ToolStripMenuItem("Select Map");
         mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
         {
@@ -1046,7 +1047,7 @@ public partial class MainForm : Form
         new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
         });
 
-        // Add capture interval menu
+        // capture interval menu
         var intervalMenu = new ToolStripMenuItem("Capture Interval");
         foreach (var interval in new[] { 500, 1000, 2000, 5000 })
         {
@@ -1059,14 +1060,16 @@ public partial class MainForm : Form
             intervalMenu.DropDownItems.Add(item);
         }
 
-        // Add all menu items
+        // menu items
         contextMenu.Items.AddRange(new ToolStripItem[] {
         mapMenu,
         new ToolStripSeparator(),
         intervalMenu,
         new ToolStripSeparator(),
         new ToolStripMenuItem("Reset Position", null, (s, e) => ResetPosition()),
-        new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys())
+        new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys()),
+        new ToolStripSeparator(),
+        new ToolStripMenuItem("Check for Updates", null, async (s, e) => await CheckForUpdatesManually())
     });
 
         _controlPanel.ContextMenuStrip = contextMenu;
@@ -1278,10 +1281,10 @@ public partial class MainForm : Form
             _statusLabel.Text = "Checking for updates...";
 
             var versionCheckService = new VersionCheckService(
-    "Simplistik78",
-    "OMNI",
-    GetAppVersion.FromAboutDialog(),
-    includePreReleases: true);  // Set to true to include pre-releases , change in Program.cs as well.
+                "Simplistik78",
+                "OMNI",
+                GetAppVersion.FromAboutDialog(),
+                includePreReleases: true);  // Set to true to include pre-releases, Toggle setting in Program.cs too!
 
             bool updateFound = false;
 
@@ -1294,18 +1297,27 @@ public partial class MainForm : Form
                 updateDialog.ShowDialog(this);
             };
 
+            Debug.WriteLine("Manually checking for updates...");
             await versionCheckService.CheckForUpdatesAsync();
+            Debug.WriteLine("Manual update check completed");
 
             // Update timestamp regardless of result
-            var settings = _settingsService.CurrentSettings;
-            settings.LastUpdateCheck = DateTime.Now;
-            _settingsService.SaveSettings(settings);
+            if (_settingsService != null)
+            {
+                var currentSettings = _settingsService.CurrentSettings;
+                currentSettings.LastUpdateCheck = DateTime.Now;
+                _settingsService.SaveSettings(currentSettings);
+            }
+            else
+            {
+                Debug.WriteLine("Warning: Settings service is null when trying to update last check timestamp");
+            }
 
             if (!updateFound)
             {
                 _statusLabel.Text = "Your application is up to date";
                 MessageBox.Show(
-                    $"You are using the latest version of OMNI (v{Application.ProductVersion}).",
+                    $"You are using the latest version of OMNI (v{GetAppVersion.FromAboutDialog()}).",
                     "No Updates Available",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

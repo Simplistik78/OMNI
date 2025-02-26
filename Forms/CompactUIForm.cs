@@ -242,19 +242,17 @@ public partial class CompactUIForm : Form, ICaptureForm
     new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
     new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
         });
-        contextMenu.Items.Add(mapMenu);
 
         // Opacity submenu to context menu
         var opacityMenu = new ToolStripMenuItem("Map Opacity");
 
-        // preset opacity options so we dont loose the window to some black hole in space or something.
+        // preset opacity options
         foreach (var opacity in new[] { 20, 40, 60, 80, 100 })
         {
             var item = new ToolStripMenuItem($"{opacity}%");
             item.Click += (s, e) =>
             {
                 _opacitySlider.Value = opacity;
-                // ValueChanged event should handle the rest..
             };
             opacityMenu.DropDownItems.Add(item);
         }
@@ -262,7 +260,8 @@ public partial class CompactUIForm : Form, ICaptureForm
         // Add opacity menu to main context menu
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(opacityMenu);
-
+        contextMenu.Items.Add(new ToolStripSeparator());
+        contextMenu.Items.Add(new ToolStripMenuItem("Check for Updates", null, async (s, e) => await CheckForUpdatesManually()));
         // Control strip setup
         _controlStrip.Height = 40;
         _controlStrip.Dock = DockStyle.Top;
@@ -392,7 +391,61 @@ public partial class CompactUIForm : Form, ICaptureForm
         this.MouseMove += Form_MouseMove;
         this.MouseUp += Form_MouseUp;
     }
+    private async Task CheckForUpdatesManually()
+    {
+        try
+        {
+            _statusLabel.Text = "Checking for updates...";
 
+            var versionCheckService = new VersionCheckService(
+                "Simplistik78",
+                "OMNI",
+                GetAppVersion.FromAboutDialog(),
+                includePreReleases: true);
+
+            bool updateFound = false;
+
+            versionCheckService.UpdateAvailable += (s, e) => {
+                updateFound = true;
+                using var updateDialog = new UpdateNotificationDialog(
+                    e.NewVersion,
+                    e.ReleaseUrl,
+                    e.ReleaseNotes);
+                updateDialog.ShowDialog(this);
+            };
+
+            await versionCheckService.CheckForUpdatesAsync();
+
+            // Update timestamp regardless of result
+            var settings = _settingsService.CurrentSettings;
+            settings.LastUpdateCheck = DateTime.Now;
+            _settingsService.SaveSettings(settings);
+
+            if (!updateFound)
+            {
+                _statusLabel.Text = "Your application is up to date";
+                MessageBox.Show(
+                    $"You are using the latest version of OMNI (v{GetAppVersion.FromAboutDialog()}).",
+                    "No Updates Available",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                _statusLabel.Text = "Update available";
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusLabel.Text = "Update check failed";
+            Debug.WriteLine($"Error checking for updates: {ex.Message}");
+            MessageBox.Show(
+                $"Error checking for updates: {ex.Message}",
+                "Update Check Failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
     public void StartCapture()
     {
         if (!_isCapturing)

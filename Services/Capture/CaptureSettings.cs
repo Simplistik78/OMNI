@@ -17,16 +17,17 @@ public class Settings
     // Main Form UI settings
     public Size MainFormSize { get; set; } = new Size(1024, 968);
     public Point MainFormLocation { get; set; } = new Point(100, 100);
-    public bool IsDarkMode { get; set; } = true; // Default to dark mode, cause your eyes will appreciate it.
+    public bool IsDarkMode { get; set; } = true; // Default to dark mode
     public bool AutoCheckForUpdates { get; set; } = true;
     public DateTime LastUpdateCheck { get; set; } = DateTime.MinValue;
-    
+
     // Compact UI specific settings
     public bool CompactUIEnabled { get; set; } = false;
     public Point CompactUILocation { get; set; } = new Point(100, 100);
     public Size CompactUISize { get; set; } = new Size(400, 300);
     public int CompactUIOpacity { get; set; } = 100;
 }
+
 
 public class SettingsService
 {
