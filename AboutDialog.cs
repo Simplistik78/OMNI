@@ -103,5 +103,10 @@ namespace OMNI.Forms
             // Set form height based on controls
             this.ClientSize = new Size(584, okButton.Bottom + 20);
         }
+
+        private void InitializeComponent()
+        {
+
+        }
     }
 }

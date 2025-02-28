@@ -1036,6 +1036,9 @@ public partial class CompactUIForm : Form, ICaptureForm
             _mapViewerService?.Dispose();
             _clipboardService?.Dispose();
 
+            
+            components?.Dispose();
+
             lock (_saveLock)
             {
                 _saveTimer?.Dispose();

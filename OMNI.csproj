@@ -13,9 +13,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="PanIcon.ico">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
+	  <None Remove="PanIcon.ico" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="PanIcon.ico">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
 	</ItemGroup>
 
 	<ItemGroup>
