@@ -238,10 +238,13 @@ public partial class CompactUIForm : Form, ICaptureForm
         var mapMenu = new ToolStripMenuItem("Select Map");
         mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
         {
-    new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
-    new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
-    new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
+        new ToolStripMenuItem("World Map", null, (s, e) => { _ = SwitchMap(1); }),
+        new ToolStripMenuItem("Halnir Cave", null, (s, e) => { _ = SwitchMap(2); }),
+        new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
         });
+
+        // Add map menu to main context menu FIRST
+        contextMenu.Items.Add(mapMenu);
 
         // Opacity submenu to context menu
         var opacityMenu = new ToolStripMenuItem("Map Opacity");
@@ -262,12 +265,16 @@ public partial class CompactUIForm : Form, ICaptureForm
         contextMenu.Items.Add(opacityMenu);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(new ToolStripMenuItem("Check for Updates", null, async (s, e) => await CheckForUpdatesManually()));
+
         // Control strip setup
         _controlStrip.Height = 40;
         _controlStrip.Dock = DockStyle.Top;
         _controlStrip.BackColor = Color.FromArgb(30, 30, 30);
         _controlStrip.Padding = new Padding(5);
         _controlStrip.ContextMenuStrip = contextMenu;
+
+        // Also attach context menu to grip panel so right-clicking there works too
+        _gripPanel.ContextMenuStrip = contextMenu;
 
         // Set up the WebView2 control
         _webView.Dock = DockStyle.Fill;
