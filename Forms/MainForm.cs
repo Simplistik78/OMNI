@@ -11,6 +11,8 @@ using System.Drawing.Imaging;
 using OMNI.Models;
 using System.Drawing;
 using System.Windows.Forms;
+using OMNI.Services.Capture;
+using OMNI.Services.Update;
 
 namespace OMNI.Forms;
 
@@ -1283,8 +1285,7 @@ public partial class MainForm : Form
             var versionCheckService = new VersionCheckService(
                 "Simplistik78",
                 "OMNI",
-                GetAppVersion.FromAboutDialog(),
-                includePreReleases: true);  // Set to true to include pre-releases, Toggle setting in Program.cs too!
+                includePreReleases: true);
 
             bool updateFound = false;
 
@@ -1317,7 +1318,7 @@ public partial class MainForm : Form
             {
                 _statusLabel.Text = "Your application is up to date";
                 MessageBox.Show(
-                    $"You are using the latest version of OMNI (v{GetAppVersion.FromAboutDialog()}).",
+                    $"You are using the latest version of OMNI (v{VersionManagerService.GetCurrentVersion()}).",
                     "No Updates Available",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

@@ -1,4 +1,4 @@
-﻿namespace OMNI.Forms
+﻿namespace OMNI.Services.Capture
 {
     public interface ICaptureForm
     {

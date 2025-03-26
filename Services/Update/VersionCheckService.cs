@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Linq;
 
-namespace OMNI.Services
+namespace OMNI.Services.Update
 {
     public class VersionCheckService
     {
@@ -17,16 +17,17 @@ namespace OMNI.Services
 
         public event EventHandler<UpdateAvailableEventArgs>? UpdateAvailable;
 
-        public VersionCheckService(string repoOwner, string repoName, string currentVersion, bool includePreReleases = false)
+        public VersionCheckService(string repoOwner, string repoName, bool includePreReleases = false)
         {
             _repoOwner = repoOwner ?? throw new ArgumentNullException(nameof(repoOwner));
             _repoName = repoName ?? throw new ArgumentNullException(nameof(repoName));
-            _currentVersion = currentVersion ?? throw new ArgumentNullException(nameof(currentVersion));
+            _currentVersion = VersionManagerService.GetCurrentVersion(); // Use the new version service
             _includePreReleases = includePreReleases;
 
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "OMNI App");
         }
+
 
         public async Task CheckForUpdatesAsync()
         {

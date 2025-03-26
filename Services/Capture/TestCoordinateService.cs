@@ -1,7 +1,7 @@
 ﻿using OMNI.Models;
 using System.Diagnostics;
 
-namespace OMNI.Services;
+namespace OMNI.Services.Capture;
 
 public class TestCoordinateService
 {

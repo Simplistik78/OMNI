@@ -1,8 +1,10 @@
 ﻿using OMNI.Services;
+using OMNI.Services.Update;
 using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
+using OMNI.Forms.UpdateForms;
 
 namespace OMNI.Forms
 {
@@ -45,10 +47,10 @@ namespace OMNI.Forms
                 Padding = new Padding(0, 10, 0, 0)
             };
 
-            // Current version label
+            // Current version label - use VersionManagerService instead of GetAppVersion.FromAboutDialog
             var currentVersionLabel = new Label
             {
-                Text = $"You're currently using v{GetAppVersion.FromAboutDialog()}",
+                Text = $"You're currently using v{VersionManagerService.GetCurrentVersion()}",
                 TextAlign = ContentAlignment.MiddleCenter,
                 Dock = DockStyle.Top,
                 Height = 30
@@ -87,7 +89,7 @@ namespace OMNI.Forms
 
             var downloadButton = new Button
             {
-                Text = "Download Update",
+                Text = "Update Now",
                 Size = new Size(140, 30),
                 Margin = new Padding(10, 0, 0, 0)
             };
@@ -136,17 +138,18 @@ namespace OMNI.Forms
             {
                 try
                 {
-                    Process.Start(new ProcessStartInfo
+                    // Open the update manager dialog instead of just opening the browser
+                    using (var updateManager = new UpdateManagerDialog(_newVersion, _releaseUrl, _releaseNotes))
                     {
-                        FileName = _releaseUrl,
-                        UseShellExecute = true
-                    });
+                        this.Hide();
+                        updateManager.ShowDialog(this.Owner);
+                    }
                     this.DialogResult = DialogResult.OK;
                     this.Close();
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error opening browser: {ex.Message}", "Error",
+                    MessageBox.Show($"Error opening update manager: {ex.Message}", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };

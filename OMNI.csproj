@@ -10,6 +10,14 @@
 		<RootNamespace>OMNI</RootNamespace>
 		<NoWarn>MSB3277</NoWarn>
 		<ApplicationIcon>PanIcon.ico</ApplicationIcon>
+		<!-- Add version information -->
+		<Version>1.4.9</Version>
+		<AssemblyVersion>1.4.9</AssemblyVersion>
+		<FileVersion>1.4.9</FileVersion>
+		<Authors>OMNI Project</Authors>
+		<Company>OMNI Project</Company>
+		<Copyright>Copyright © 2024-2025 OMNI Project</Copyright>
+		<Description>Overlay Map &amp; Navigation Interface for Pantheon: Rise of the Fallen</Description>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -62,5 +70,14 @@
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
+
+	<!-- Update version information after build -->
+	<Target Name="UpdateVersionInfoFile" AfterTargets="Build">
+		<PropertyGroup>
+			<VersionFilePath>$(OutDir)\app_version.json</VersionFilePath>
+		</PropertyGroup>
+		<Message Text="Writing version info to $(VersionFilePath)" Importance="high" />
+		<WriteLinesToFile File="$(VersionFilePath)" Lines="{&#xD;&#xA;		&quot;Version&quot;: &quot;$(AssemblyVersion)&quot;,&#xD;&#xA;		&quot;UpdatedOn&quot;: &quot;$([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))&quot;&#xD;&#xA;	}" Overwrite="true" />
+	</Target>
 
 </Project>

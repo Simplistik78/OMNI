@@ -7,6 +7,8 @@ using OMNI.Services.WebView;
 using System.Diagnostics;
 using System.Threading;
 using OMNI.Models;
+using OMNI.Services.Capture;
+using OMNI.Services.Update;
 
 namespace OMNI.Forms;
 
@@ -407,7 +409,6 @@ public partial class CompactUIForm : Form, ICaptureForm
             var versionCheckService = new VersionCheckService(
                 "Simplistik78",
                 "OMNI",
-                GetAppVersion.FromAboutDialog(),
                 includePreReleases: true);
 
             bool updateFound = false;
@@ -432,7 +433,7 @@ public partial class CompactUIForm : Form, ICaptureForm
             {
                 _statusLabel.Text = "Your application is up to date";
                 MessageBox.Show(
-                    $"You are using the latest version of OMNI (v{GetAppVersion.FromAboutDialog()}).",
+                    $"You are using the latest version of OMNI (v{VersionManagerService.GetCurrentVersion()}).",
                     "No Updates Available",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

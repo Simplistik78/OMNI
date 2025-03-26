@@ -1,5 +1,7 @@
 ﻿using System.Drawing;
 using System.Windows.Forms;
+using OMNI.Services;
+using OMNI.Services.Update;
 
 namespace OMNI.Forms
 {
@@ -29,10 +31,10 @@ namespace OMNI.Forms
                 Location = new Point(20, 20)
             };
 
-            // Create version label
+            // Create version label - Use the VersionManagerService
             var versionLabel = new Label
             {
-                Text = "Version 1.3.8",
+                Text = $"Version {VersionManagerService.GetCurrentVersion()}",
                 Location = new Point(20, titleLabel.Bottom + 10),
                 AutoSize = true
             };
@@ -92,21 +94,16 @@ namespace OMNI.Forms
 
             // Add controls to form
             this.Controls.AddRange(new Control[] {
-                titleLabel,
-                versionLabel,
-                copyrightLabel,
-                licenseTextBox,
-                githubLink,
-                okButton
-            });
+        titleLabel,
+        versionLabel,
+        copyrightLabel,
+        licenseTextBox,
+        githubLink,
+        okButton
+    });
 
             // Set form height based on controls
             this.ClientSize = new Size(584, okButton.Bottom + 20);
-        }
-
-        private void InitializeComponent()
-        {
-
         }
     }
 }

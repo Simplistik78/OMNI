@@ -1,6 +1,8 @@
 using OMNI.Forms;
 using OMNI.Services;
+using OMNI.Services.Capture;
 using OMNI.Services.OCR;
+using OMNI.Services.Update;
 using System.Diagnostics;
 
 namespace OMNI;
@@ -21,6 +23,9 @@ internal static class Program
         try
         {
             ApplicationConfiguration.Initialize();
+
+            // Check and complete any pending updates first
+            CheckAndCompletePendingUpdates();
 
             // Create services
             _ocrService = new TesseractOCRService();
@@ -60,13 +65,38 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Checks for and completes any pending updates from previous sessions
+    /// </summary>
+    private static void CheckAndCompletePendingUpdates()
+    {
+        try
+        {
+            var updateService = new UpdateInstallerService();
+            var pendingUpdateTask = updateService.CheckAndCompletePendingUpdatesAsync();
+            pendingUpdateTask.Wait(); // Wait synchronously since we're at app startup
+
+            if (pendingUpdateTask.Result)
+            {
+                MessageBox.Show(
+                    "Updates from a previous installation have been completed successfully.",
+                    "Update Complete",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error checking for pending updates: {ex}");
+        }
+    }
+
     private static void SetupVersionChecking()
     {
-        // Version checking service ,toggle setting in MainForm as well!
+        // Version checking service
         var versionCheckService = new VersionCheckService(
             "Simplistik78",
             "OMNI",
-            GetAppVersion.FromAboutDialog(),
             includePreReleases: true);
 
         // Check for updates on startup
