@@ -33,7 +33,8 @@ public partial class MainForm : Form
     private int _currentMapId = 1; // Default to world map
     private readonly ClipboardMonitorService _clipboardService;
     private bool _isDarkMode = true;
-    
+    private CheckBox _autoCenterCheckBox;
+
     // UI Controls initialized directly
     private readonly Panel _controlPanel = new();
     private readonly FlowLayoutPanel _historyPanel = new();
@@ -51,6 +52,8 @@ public partial class MainForm : Form
     private readonly System.Windows.Forms.Timer _captureTimer = new();
     private readonly TestCoordinateService _testService;
     private readonly Button _testModeButton;
+    private ToolStripMenuItem _autoCenterMenuItem;
+
     public MainForm(IOCRService ocrService, SettingsService settingsService)
     {
         _ocrService = ocrService ?? throw new ArgumentNullException(nameof(ocrService));
@@ -231,6 +234,10 @@ public partial class MainForm : Form
                 if (wasCapturing)
                 {
                     await Task.Delay(1000); // Give the map time to load
+
+                    // Apply auto-center setting to new map
+                    await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+
                     await StartCapture();
                 }
             }
@@ -335,7 +342,7 @@ public partial class MainForm : Form
         _startStopButton.FlatStyle = FlatStyle.Standard;
         _startStopButton.BackColor = SystemColors.Control;
 
-        
+
         _testCaptureButton.Text = "Test Capture Area";
         _testCaptureButton.Dock = DockStyle.Top;
         _testCaptureButton.Height = 30;
@@ -363,7 +370,34 @@ public partial class MainForm : Form
             ApplyDarkMode(_isDarkMode);
         };
 
-        
+        // Auto-center map checkbox
+        _autoCenterCheckBox = new CheckBox
+        {
+            Text = "Auto-Center Map for Main UI",
+            Checked = _settingsService.CurrentSettings.AutoCenterMap,
+            Dock = DockStyle.Top,
+            Height = 30,
+            Margin = new Padding(0, 5, 0, 0),
+            FlatStyle = FlatStyle.Standard,
+            BackColor = SystemColors.Control
+        };
+
+        _autoCenterCheckBox.CheckedChanged += async (s, e) =>
+        {
+            var settings = _settingsService.CurrentSettings;
+            settings.AutoCenterMap = _autoCenterCheckBox.Checked;
+            _settingsService.SaveSettings(settings);
+
+            // Synchronize the context menu item with the checkbox
+            if (_autoCenterMenuItem != null)
+            {
+                _autoCenterMenuItem.Checked = _autoCenterCheckBox.Checked;
+            }
+
+            await _mapViewerService.SetAutoCenterAsync(_autoCenterCheckBox.Checked);
+            _statusLabel.Text = $"Map auto-centering {(_autoCenterCheckBox.Checked ? "enabled" : "disabled")}";
+        };
+
 
         var numericTable = new TableLayoutPanel
         {
@@ -398,6 +432,7 @@ public partial class MainForm : Form
         _resetPinsButton,          // Reset pins button
         _overlayButton,            // Position capture window button
         darkModeButton,            // Added dark mode toggle
+        _autoCenterCheckBox,       // Auto-center map checkbox
         _compactUIButton,          // Compact UI button
         _historyPanel              // History panel
     });
@@ -426,25 +461,28 @@ public partial class MainForm : Form
             // Standard button color for most buttons
             Color standardButtonColor = Color.FromArgb(70, 130, 180); // Steel Blue
 
-            
+
             _startStopButton.BackColor = standardButtonColor;
             _startStopButton.ForeColor = Color.White;
 
             _testCaptureButton.BackColor = standardButtonColor;
             _testCaptureButton.ForeColor = Color.White;
 
-            
+
             _resetPinsButton.BackColor = Color.LightCoral;
             _resetPinsButton.ForeColor = Color.White;
 
             _overlayButton.BackColor = standardButtonColor;
             _overlayButton.ForeColor = Color.White;
 
-            
-            
+
+
             _compactUIButton.ForeColor = Color.White;
 
-            
+            // Auto-center checkbox
+            _autoCenterCheckBox.ForeColor = Color.White;
+            _autoCenterCheckBox.BackColor = Color.FromArgb(50, 50, 55);
+
             foreach (Control control in _controlPanel.Controls)
             {
                 if (control is GroupBox groupBox)
@@ -514,6 +552,10 @@ public partial class MainForm : Form
 
             _compactUIButton.BackColor = SystemColors.ControlDark;
             _compactUIButton.ForeColor = Color.White;
+
+            // Auto-center checkbox
+            _autoCenterCheckBox.ForeColor = Color.Black;
+            _autoCenterCheckBox.BackColor = SystemColors.Control;
 
             // Update form elements back to light mode
             foreach (Control control in _controlPanel.Controls)
@@ -656,7 +698,7 @@ public partial class MainForm : Form
         }
         base.Dispose(disposing);
     }
-    
+
     public async Task StartCapture()
     {
         if (_isCapturing) return;
@@ -664,6 +706,10 @@ public partial class MainForm : Form
         try
         {
             await _mapViewerService.WaitForInitializationAsync();
+
+            // Make sure auto-center setting is correct
+            await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+
             _clipboardService.IsEnabled = false; // Disable clipboard monitoring
             _captureTimer.Start();
             _startStopButton.Text = "Stop";
@@ -695,7 +741,7 @@ public partial class MainForm : Form
             Debug.WriteLine("OCR Capture stopped, clipboard monitoring resumed");
         }
     }
-    
+
     private async Task ProcessCoordinates(Coordinates coordinates)
     {
         try
@@ -711,6 +757,9 @@ public partial class MainForm : Form
 
                 _lastProcessedCoordinates = coordinates;
                 _lastProcessedTime = DateTime.Now;
+
+                // Make sure auto-center setting is applied before adding marker
+                await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
 
                 var result = await _mapViewerService.AddMarkerAsync(
                     coordinates.X,
@@ -738,6 +787,7 @@ public partial class MainForm : Form
             _statusLabel.Text = $"Error: {ex.Message}";
         }
     }
+
 
 
     private void SetupEventHandlers()
@@ -984,7 +1034,7 @@ public partial class MainForm : Form
                     switch (_currentMapId)
                     {
                         case 2: // Halnir Cave
-                                // TODO: Add coordinate transformation for Halnir Cave
+                                
                             Debug.WriteLine($"Halnir Cave coordinates detected: {coordinates}");
                             break;
 
@@ -1035,12 +1085,12 @@ public partial class MainForm : Form
         }
     }
 
-    
+
     private void SetupContextMenu()
     {
         var contextMenu = new ContextMenuStrip();
 
-        //map selection menu
+        // Map selection menu
         var mapMenu = new ToolStripMenuItem("Select Map");
         mapMenu.DropDownItems.AddRange(new ToolStripMenuItem[]
         {
@@ -1049,7 +1099,7 @@ public partial class MainForm : Form
         new ToolStripMenuItem("Goblin Caves", null, (s, e) => { _ = SwitchMap(3); })
         });
 
-        // capture interval menu
+        // Capture interval menu
         var intervalMenu = new ToolStripMenuItem("Capture Interval");
         foreach (var interval in new[] { 500, 1000, 2000, 5000 })
         {
@@ -1062,11 +1112,31 @@ public partial class MainForm : Form
             intervalMenu.DropDownItems.Add(item);
         }
 
-        // menu items
+        // Add auto-center toggle to context menu
+        var autoCenterMenuItem = new ToolStripMenuItem("Auto-Center Map for Main UI")
+        {
+            Checked = _settingsService.CurrentSettings.AutoCenterMap,
+            CheckOnClick = true
+        };
+        autoCenterMenuItem.Click += async (s, e) =>
+        {
+            var settings = _settingsService.CurrentSettings;
+            settings.AutoCenterMap = autoCenterMenuItem.Checked;
+            _settingsService.SaveSettings(settings);
+
+            _autoCenterCheckBox.Checked = autoCenterMenuItem.Checked;
+
+            await _mapViewerService.SetAutoCenterAsync(autoCenterMenuItem.Checked);
+            _statusLabel.Text = $"Map auto-centering {(autoCenterMenuItem.Checked ? "enabled" : "disabled")}";
+        };
+
+        // Menu items
         contextMenu.Items.AddRange(new ToolStripItem[] {
         mapMenu,
         new ToolStripSeparator(),
         intervalMenu,
+        new ToolStripSeparator(),
+        autoCenterMenuItem,
         new ToolStripSeparator(),
         new ToolStripMenuItem("Reset Position", null, (s, e) => ResetPosition()),
         new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys()),
@@ -1075,7 +1145,10 @@ public partial class MainForm : Form
     });
 
         _controlPanel.ContextMenuStrip = contextMenu;
+        _autoCenterMenuItem = autoCenterMenuItem;
     }
+
+
 
 
 
@@ -1156,6 +1229,10 @@ public partial class MainForm : Form
             // Wait for map service to initialize
             _statusLabel.Text = "Initializing map...";
             await _mapViewerService.WaitForInitializationAsync();
+
+            // Apply auto-center setting after map is initialized
+            await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+
             _statusLabel.Text = "Ready";
 
             // Restore compact UI if it was enabled
@@ -1190,6 +1267,9 @@ public partial class MainForm : Form
 
             // Load dark mode setting
             _isDarkMode = settings.IsDarkMode;
+
+            // Load auto-center setting
+            _autoCenterCheckBox.Checked = settings.AutoCenterMap;
 
             // Load MainForm settings
             if (settings.MainFormSize.Width > 0 && settings.MainFormSize.Height > 0)
@@ -1227,15 +1307,31 @@ public partial class MainForm : Form
     {
         var settings = _settingsService.CurrentSettings;
 
-        // Save MainForm settings
-        settings.MainFormSize = this.Size;
-        settings.MainFormLocation = this.Location;
+        // Save capture area settings
+        settings.CaptureX = (int)_captureX.Value;
+        settings.CaptureY = (int)_captureY.Value;
+        settings.CaptureWidth = (int)_captureWidth.Value;
+        settings.CaptureHeight = (int)_captureHeight.Value;
+        settings.CaptureInterval = _captureTimer.Interval;
+
+        // Save form position and size
+        if (!this.IsDisposed && this.WindowState == FormWindowState.Normal)
+        {
+            settings.MainFormSize = this.Size;
+            settings.MainFormLocation = this.Location;
+        }
+
+        // Save auto-center setting
+        settings.AutoCenterMap = _autoCenterCheckBox.Checked;
+
+        // Save dark mode setting
+        settings.IsDarkMode = _isDarkMode;
 
         _settingsService.SaveSettings(settings);
     }
 
 
-    
+
 
     private void ShowHotkeys()
     {

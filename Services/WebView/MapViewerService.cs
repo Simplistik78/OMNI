@@ -61,6 +61,7 @@ namespace OMNI.Services.WebView
                 _ = InitializeWebView2Async();
             }
         }
+
         public async Task WaitForInitializationAsync()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -88,6 +89,7 @@ namespace OMNI.Services.WebView
                 _environmentLock.Release();
             }
         }
+
         public async Task SetMapOpacity(float opacity)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -131,6 +133,107 @@ namespace OMNI.Services.WebView
                 OnErrorOccurred(ex);
             }
         }
+
+        // Implementation for the new SetAutoCenterAsync method
+        public async Task SetAutoCenterAsync(bool enabled)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (!_isInitialized || _webView.CoreWebView2 == null)
+            {
+                Debug.WriteLine("WARNING: Cannot set auto-center because WebView is not initialized");
+                return;
+            }
+
+            try
+            {
+                Debug.WriteLine($"Setting auto-center to: {enabled}");
+
+                // First, ensure the gameMarker exists and has autoCenterEnabled property
+                string checkScript = @"
+(function() {
+    if (window.gameMarker) {
+        return JSON.stringify({
+            exists: true,
+            hasAutoCenterEnabled: 'autoCenterEnabled' in window.gameMarker,
+            currentValue: window.gameMarker.autoCenterEnabled
+        });
+    }
+    return JSON.stringify({ exists: false });
+})();";
+
+                var checkResult = await _webView.CoreWebView2.ExecuteScriptAsync(checkScript);
+                Debug.WriteLine($"Check result: {checkResult.Trim('\"')}");
+
+                //try to set the value with improved script, hopefully anyhow..
+                string script = $@"
+(function() {{
+    try {{
+        if (!window.gameMarker) {{
+            console.error('gameMarker object not found');
+            return 'Error: gameMarker object not found';
+        }}
+        
+        // Set the value directly with explicit boolean conversion
+        window.gameMarker.autoCenterEnabled = {(enabled ? "true" : "false")};
+        
+        // Call the method if it exists
+        if (typeof window.gameMarker.setAutoCenter === 'function') {{
+            var result = window.gameMarker.setAutoCenter({(enabled ? "true" : "false")});
+            console.log('Auto-center set to: {(enabled ? "true" : "false")}', ', Result:', result);
+            return result;
+        }}
+        else {{
+            console.log('setAutoCenter method not found, set property directly to: {(enabled ? "true" : "false")}');
+            return 'Auto-center property set to: {(enabled ? "true" : "false")}';
+        }}
+    }} catch (error) {{
+        console.error('Error setting auto-center:', error);
+        return 'Error: ' + error.message;
+    }}
+}})();
+";
+
+                var result = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                Debug.WriteLine($"Set auto-center result: {result.Trim('\"')}");
+
+                // Verify the value was properly set
+                string verifyScript = @"
+(function() {
+    if (window.gameMarker) {
+        return JSON.stringify({
+            afterValue: window.gameMarker.autoCenterEnabled,
+            typeOf: typeof window.gameMarker.autoCenterEnabled
+        });
+    }
+    return 'Object not found';
+})();";
+
+                var verifyResult = await _webView.CoreWebView2.ExecuteScriptAsync(verifyScript);
+                Debug.WriteLine($"Verify result: {verifyResult.Trim('\"')}");
+
+                //Add a forced setting of the value through direct property access
+                string forceScript = $@"
+(function() {{
+    if (window.gameMarker) {{
+        // Force the value directly in case of any state inconsistency
+        window.gameMarker.autoCenterEnabled = {(enabled ? "true" : "false")};
+        console.log('Forced auto-center to:', {(enabled ? "true" : "false")});
+        return 'Forced value set';
+    }}
+    return 'Object not found for force';
+}})();";
+
+                var forceResult = await _webView.CoreWebView2.ExecuteScriptAsync(forceScript);
+                Debug.WriteLine($"Force result: {forceResult.Trim('\"')}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error setting auto-center: {ex}");
+                OnErrorOccurred(ex);
+            }
+        }
+
         private string GetInitScript()
         {
             string compactModeCss = _isCompactMode ? @"
@@ -294,6 +397,24 @@ function initializeSystem() {
     `;
     document.head.appendChild(customCSS);
 
+    // Store the original setView method to intercept calls
+    if (window.ShalazamLeafletMap) {
+        window.originalSetView = window.ShalazamLeafletMap.setView;
+        
+        // Replace the map's setView method with custom version that respects auto-center
+        window.ShalazamLeafletMap.setView = function() {
+            // Check if we have our marker system and auto-center is disabled
+            if (window.gameMarker && window.gameMarker.autoCenterEnabled === false) {
+                console.log('Auto-center is disabled - preventing setView call');
+                return this; // Return map instance without centering
+            }
+            
+            // Otherwise call the original method
+            console.log('Allowing setView call');
+            return window.originalSetView.apply(this, arguments);
+        };
+    }
+
     function getCoordinates(x, y) {
         return new Promise((resolve) => {
             // Click pin drop to initialize coordinate system
@@ -364,6 +485,8 @@ function initializeSystem() {
         window.gameMarker = {
             current: null,
             lastCoords: null,
+            autoCenterEnabled: false, // Default to false
+            
             add: async function(x, y, heading) {
                 try {
                     // Check if coordinates are the same
@@ -387,14 +510,14 @@ function initializeSystem() {
 
                     // Create arrow icon
                     const arrowIcon = L.divIcon({
-    html: `<svg xmlns=""http://www.w3.org/2000/svg"" width=""25"" height=""25""
-               viewBox=""0 0 20 20"" style=""transform: rotate(${heading}deg);"">
-               <path d=""M10 2 L16 16 L10 12 L4 16 Z"" fill=""#00FFFF"" stroke=""black"" stroke-width=""2""/>
-           </svg>`,
-    className: 'custom-arrow-icon',
-    iconSize: [25, 25],
-    iconAnchor: [15, 15]
-});
+                        html: `<svg xmlns=""http://www.w3.org/2000/svg"" width=""25"" height=""25""
+                               viewBox=""0 0 20 20"" style=""transform: rotate(${heading}deg);"">
+                               <path d=""M10 2 L16 16 L10 12 L4 16 Z"" fill=""#00FFFF"" stroke=""black"" stroke-width=""2""/>
+                           </svg>`,
+                        className: 'custom-arrow-icon',
+                        iconSize: [25, 25],
+                        iconAnchor: [15, 15]
+                    });
 
                     // Add marker
                     this.current = L.marker(latlng, {
@@ -403,15 +526,27 @@ function initializeSystem() {
                         interactive: false
                     }).addTo(window.ShalazamLeafletMap);
 
-                    // Center map
-                    window.ShalazamLeafletMap.setView(latlng, window.ShalazamLeafletMap.getZoom());
-                    console.log('Arrow placed at:', latlng, 'with heading:', heading);
+                    // Debug output
+                    console.log('Add marker function:');
+                    console.log('- Auto-center enabled:', this.autoCenterEnabled);
+                    console.log('- Auto-center type:', typeof this.autoCenterEnabled);
+                    
+                    // Only center map if auto-center is specifically enabled
+                    if (this.autoCenterEnabled === true) {
+                        console.log('Centering map - auto-center is true');
+                        // Call the original setView method directly to bypass our check
+                        window.originalSetView.call(window.ShalazamLeafletMap, latlng, window.ShalazamLeafletMap.getZoom());
+                    } else {
+                        console.log('NOT centering map - auto-center is false');
+                    }
+                    
                     return 'Marker added successfully';
                 } catch (e) {
                     console.error('Error in add marker function:', e);
                     return 'Error: ' + e.message;
                 }
             },
+            
             clear: function() {
                 if (this.current) {
                     this.current.remove();
@@ -419,10 +554,28 @@ function initializeSystem() {
                 }
                 this.lastCoords = null;
                 return 'Marker cleared';
+            },
+            
+            setAutoCenter: function(enabled) {
+                console.log('setAutoCenter called with value:', enabled);
+                console.log('typeof enabled:', typeof enabled);
+                
+                // Convert string ""true""/""false"" to boolean if needed
+                if (typeof enabled === 'string') {
+                    enabled = (enabled.toLowerCase() === 'true');
+                }
+                
+                // Set the value with explicit boolean check
+                this.autoCenterEnabled = enabled === true;
+                
+                console.log('autoCenterEnabled set to:', this.autoCenterEnabled);
+                console.log('typeof autoCenterEnabled:', typeof this.autoCenterEnabled);
+                
+                return `Auto-center ${this.autoCenterEnabled ? 'enabled' : 'disabled'}`;
             }
         };
 
-        console.log('gameMarker object initialized.');
+        console.log('gameMarker object initialized with auto-center:', window.gameMarker.autoCenterEnabled);
         window.mapHandler = window.gameMarker;
     }
 
@@ -438,6 +591,7 @@ if (document.readyState === 'loading') {
     initializeSystem();
 }";
         }
+
 
 
         private async Task InitializeWebView2Async()

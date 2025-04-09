@@ -21,6 +21,9 @@ public class Settings
     public bool AutoCheckForUpdates { get; set; } = true;
     public DateTime LastUpdateCheck { get; set; } = DateTime.MinValue;
 
+    // New property for map auto-centering
+    public bool AutoCenterMap { get; set; } = true; // Default to auto-centering behavior
+
     // Compact UI specific settings
     public bool CompactUIEnabled { get; set; } = false;
     public Point CompactUILocation { get; set; } = new Point(100, 100);

@@ -12,4 +12,7 @@ public interface IMapViewerService : IDisposable
     Task<string> ClearMarkersAsync();
     Task SetKeepHistoryAsync(bool keepHistory);
     Task SetMapOpacity(float opacity);
+
+    // New method for controlling auto-centering behavior
+    Task SetAutoCenterAsync(bool enabled);
 }

@@ -210,6 +210,9 @@ public partial class CompactUIForm : Form, ICaptureForm
         {
             // Wait for map initialization before proceeding
             await _mapViewerService.WaitForInitializationAsync();
+
+            // Apply auto-center setting after map is initialized
+            await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
         }
         catch (Exception ex)
         {
@@ -323,6 +326,21 @@ public partial class CompactUIForm : Form, ICaptureForm
         //event handler for slider
         _opacitySlider.ValueChanged += OpacitySlider_ValueChanged;
 
+        // Create and add the auto-center menu item
+        var autoCenterItem = new ToolStripMenuItem("Auto-Center Map for Compact UI")
+        {
+            Checked = _settingsService.CurrentSettings.AutoCenterMap,
+            CheckOnClick = true
+        };
+        autoCenterItem.Click += async (s, e) =>
+        {
+            var settings = _settingsService.CurrentSettings;
+            settings.AutoCenterMap = autoCenterItem.Checked;
+            _settingsService.SaveSettings(settings);
+            await _mapViewerService.SetAutoCenterAsync(autoCenterItem.Checked);
+            _statusLabel.Text = $"Auto-center {(autoCenterItem.Checked ? "enabled" : "disabled")}";
+        };
+        contextMenu.Items.Add(autoCenterItem);
         // Add close button
         var closeButton = new Button
         {
@@ -463,6 +481,10 @@ public partial class CompactUIForm : Form, ICaptureForm
             _toggleCaptureButton.Text = "Stop";
             _statusLabel.Text = "OCR Capturing...";
             _isCapturing = true;
+
+            // Apply auto-center setting
+            _ = _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+
             Debug.WriteLine("OCR Capture started");
         }
     }
@@ -607,6 +629,9 @@ public partial class CompactUIForm : Form, ICaptureForm
         {
             if (coordinates != null)
             {
+                // Make sure auto-center setting is applied
+                await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+
                 var result = await _mapViewerService.AddMarkerAsync(
                     coordinates.X,
                     coordinates.Y,
@@ -702,6 +727,7 @@ public partial class CompactUIForm : Form, ICaptureForm
 
             this.Size = new Size(width, height);
         }
+
         if (settings.CompactUIOpacity > 0)
         {
             _opacitySlider.Value = settings.CompactUIOpacity;
@@ -711,6 +737,7 @@ public partial class CompactUIForm : Form, ICaptureForm
         {
             _opacitySlider.Value = 100; // Default to 100% opacity
         }
+
         if (settings.CompactUILocation != Point.Empty)
         {
             var targetScreen = Screen.FromPoint(settings.CompactUILocation);
@@ -735,6 +762,26 @@ public partial class CompactUIForm : Form, ICaptureForm
         {
             this.StartPosition = FormStartPosition.CenterScreen;
         }
+
+        // Update auto-center menu item with saved setting
+        try
+        {
+            if (_controlStrip.ContextMenuStrip != null)
+            {
+                foreach (var item in _controlStrip.ContextMenuStrip.Items)
+                {
+                    if (item is ToolStripMenuItem menuItem && menuItem.Text == "Auto-Center Map")
+                    {
+                        menuItem.Checked = settings.AutoCenterMap;
+                        break;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error updating auto-center menu item: {ex.Message}");
+        }
     }
 
     private void SaveCurrentSettings()
@@ -757,8 +804,24 @@ public partial class CompactUIForm : Form, ICaptureForm
                 settings.CompactUILocation = this.Location;
             }
 
+            // Save auto-center setting from context menu
+            if (_controlStrip.ContextMenuStrip != null)
+            {
+                foreach (var item in _controlStrip.ContextMenuStrip.Items)
+                {
+                    if (item is ToolStripMenuItem menuItem && menuItem.Text == "Auto-Center Map")
+                    {
+                        settings.AutoCenterMap = menuItem.Checked;
+                        break;
+                    }
+                }
+            }
+
             // Maintain enabled state
             settings.CompactUIEnabled = true;
+
+            // Save opacity setting
+            settings.CompactUIOpacity = _opacitySlider.Value;
 
             _settingsService.SaveSettings(settings);
         }
@@ -854,6 +917,10 @@ public partial class CompactUIForm : Form, ICaptureForm
                 if (wasCapturing)
                 {
                     await Task.Delay(1000); // Give the map time to load
+
+                    // Apply auto-center setting to new map
+                    await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+
                     StartCapture();
                 }
             }
