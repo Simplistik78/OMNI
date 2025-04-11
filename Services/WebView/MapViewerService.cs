@@ -234,6 +234,7 @@ namespace OMNI.Services.WebView
             }
         }
 
+        // JavaScript makes the kool-aid man mad
         private string GetInitScript()
         {
             string compactModeCss = _isCompactMode ? @"
@@ -370,7 +371,9 @@ html {
 }
 " : string.Empty;
 
+            
             return @"
+// Don't reinitialize if already done
 if (window.markerSystemInitialized) {
     console.log('Marker system already initialized');
     return;
@@ -379,8 +382,12 @@ if (window.markerSystemInitialized) {
 window.markerSystemInitialized = true;
 console.log('Starting marker system initialization');
 
+// Global namespace to ensure objects are accessible
+window.OMNI = window.OMNI || {};
+window.OMNI.autoCenterEnabled = false;
+
 function initializeSystem() {
-    // Add custom CSS
+    // custom CSS
     var customCSS = document.createElement('style');
     customCSS.type = 'text/css';
     customCSS.innerHTML = `
@@ -397,24 +404,93 @@ function initializeSystem() {
     `;
     document.head.appendChild(customCSS);
 
-    // Store the original setView method to intercept calls
-    if (window.ShalazamLeafletMap) {
-        window.originalSetView = window.ShalazamLeafletMap.setView;
+    // Simple debug logger
+    function log(message) {
+        console.log('OMNI: ' + message);
+    }
+
+    // Global flag to track map center before adding marker
+    let lastCenter = null;
+    let lastZoom = null;
+
+    // Wait for map to be available before proceeding
+    function waitForMap() {
+        // Check if Leaflet and map are loaded
+        if (!window.L || !window.ShalazamLeafletMap) {
+            log('Waiting for map to be available...');
+            setTimeout(waitForMap, 300);
+            return;
+        }
         
-        // Replace the map's setView method with custom version that respects auto-center
-        window.ShalazamLeafletMap.setView = function() {
-            // Check if we have our marker system and auto-center is disabled
-            if (window.gameMarker && window.gameMarker.autoCenterEnabled === false) {
-                console.log('Auto-center is disabled - preventing setView call');
-                return this; // Return map instance without centering
+        log('Map found, initializing marker system');
+        setupMapSystem();
+    }
+
+    // Main setup function
+    function setupMapSystem() {
+        const map = window.ShalazamLeafletMap;
+        
+        // Store original map methods
+        window.OMNI.originalSetView = map.setView;
+        window.OMNI.originalPanTo = map.panTo;
+        window.OMNI.originalFlyTo = map.flyTo;
+        
+        // Override ALL movement methods to prevent auto-centering
+        map.setView = function() {
+            // If auto-center is disabled, check for marker operation
+            if (!window.OMNI.autoCenterEnabled && window.OMNI.isMarkerOperation) {
+                log('Blocked setView during marker operation (auto-center disabled)');
+                return this;
             }
+            return window.OMNI.originalSetView.apply(this, arguments);
+        };
+        
+        map.panTo = function() {
+            if (!window.OMNI.autoCenterEnabled && window.OMNI.isMarkerOperation) {
+                log('Blocked panTo during marker operation (auto-center disabled)');
+                return this;
+            }
+            return window.OMNI.originalPanTo.apply(this, arguments);
+        };
+        
+        map.flyTo = function() {
+            if (!window.OMNI.autoCenterEnabled && window.OMNI.isMarkerOperation) {
+                log('Blocked flyTo during marker operation (auto-center disabled)');
+                return this;
+            }
+            return window.OMNI.originalFlyTo.apply(this, arguments);
+        };
+        
+        // Make sure all map controls are enabled
+        if (map.dragging) map.dragging.enable();
+        if (map.scrollWheelZoom) map.scrollWheelZoom.enable();
+        if (map.doubleClickZoom) map.doubleClickZoom.enable();
+        if (map.touchZoom) map.touchZoom.enable();
+        if (map.boxZoom) map.boxZoom.enable();
+        
+        // Initialize the game marker system
+        initGameMarker();
+        
+        // Add a diagnostic method to the global scope
+        window.checkOMNI = function() {
+            console.log({
+                markerInitialized: !!window.markerSystemInitialized,
+                gameMarkerExists: !!window.OMNI.gameMarker,
+                autoCenterEnabled: window.OMNI.autoCenterEnabled,
+                mapExists: !!window.ShalazamLeafletMap,
+                omniNamespace: !!window.OMNI,
+                isMarkerOperation: window.OMNI.isMarkerOperation || false
+            });
             
-            // Otherwise call the original method
-            console.log('Allowing setView call');
-            return window.originalSetView.apply(this, arguments);
+            // Print current zoom level and center
+            if (window.ShalazamLeafletMap) {
+                console.log('Current zoom level:', window.ShalazamLeafletMap.getZoom());
+                console.log('Current center:', window.ShalazamLeafletMap.getCenter());
+            }
         };
     }
 
+    // Helper function to get map coordinates
     function getCoordinates(x, y) {
         return new Promise((resolve) => {
             // Click pin drop to initialize coordinate system
@@ -474,37 +550,56 @@ function initializeSystem() {
         });
     }
 
+    // Initialize the marker system
     function initGameMarker() {
-        if (!window.ShalazamLeafletMap) {
-            console.error('Map instance not found. Waiting for map instance...');
-            setTimeout(initGameMarker, 500);
-            return;
-        }
-        console.log('Map instance found.');
-
-        window.gameMarker = {
+        log('Initializing game marker system');
+        
+        // Create and store the marker handler in our namespace
+        window.OMNI.gameMarker = {
             current: null,
             lastCoords: null,
-            autoCenterEnabled: false, // Default to false
+            history: [],
+            keepHistory: false,
             
             add: async function(x, y, heading) {
                 try {
-                    // Check if coordinates are the same
+                    log(`Adding marker at X:${x}, Y:${y}, H:${heading}`);
+                    
+                    // Skip if coordinates are unchanged
                     const currentCoords = `${x},${y},${heading}`;
                     if (this.lastCoords === currentCoords) {
+                        log('Coordinates unchanged, skipping');
                         return 'Coordinates unchanged';
                     }
                     this.lastCoords = currentCoords;
+                    
+                    // Store the current map position and zoom level before adding a marker
+                    const map = window.ShalazamLeafletMap;
+                    const startCenter = map.getCenter();
+                    const startZoom = map.getZoom();
+                    
+                    log(`Map state before marker: center=${startCenter.lat},${startCenter.lng} zoom=${startZoom}`);
+
+                    // Flag that we're starting a marker operation
+                    window.OMNI.isMarkerOperation = true;
 
                     // Get correct map position
                     const latlng = await getCoordinates(x, y);
                     if (!latlng) {
+                        window.OMNI.isMarkerOperation = false;
+                        log('Could not get map position');
                         return 'Error: Could not get map position';
                     }
+                    
+                    log(`Map position: lat=${latlng.lat}, lng=${latlng.lng}`);
 
                     // Remove existing marker
                     if (this.current) {
-                        this.current.remove();
+                        if (this.keepHistory) {
+                            this.history.push(this.current);
+                        } else {
+                            this.current.remove();
+                        }
                         this.current = null;
                     }
 
@@ -520,76 +615,103 @@ function initializeSystem() {
                     });
 
                     // Add marker
+                    log('Creating new marker');
                     this.current = L.marker(latlng, {
                         icon: arrowIcon,
                         zIndexOffset: 1000,
                         interactive: false
-                    }).addTo(window.ShalazamLeafletMap);
+                    }).addTo(map);
 
-                    // Debug output
-                    console.log('Add marker function:');
-                    console.log('- Auto-center enabled:', this.autoCenterEnabled);
-                    console.log('- Auto-center type:', typeof this.autoCenterEnabled);
-                    
-                    // Only center map if auto-center is specifically enabled
-                    if (this.autoCenterEnabled === true) {
-                        console.log('Centering map - auto-center is true');
-                        // Call the original setView method directly to bypass our check
-                        window.originalSetView.call(window.ShalazamLeafletMap, latlng, window.ShalazamLeafletMap.getZoom());
+                    // Handle auto-center 
+                    if (window.OMNI.autoCenterEnabled) {
+                        log('Auto-center enabled, centering map');
+                        window.OMNI.originalSetView.call(map, latlng, startZoom);
                     } else {
-                        console.log('NOT centering map - auto-center is false');
+                        log('Auto-center disabled, restoring original position');
+                        // Restore the original position and zoom - this prevents any auto-centering
+                        window.OMNI.originalSetView.call(map, startCenter, startZoom);
                     }
                     
+                    // End marker operation
+                    window.OMNI.isMarkerOperation = false;
+                    
+                    log('Marker added successfully');
                     return 'Marker added successfully';
                 } catch (e) {
+                    window.OMNI.isMarkerOperation = false;
                     console.error('Error in add marker function:', e);
                     return 'Error: ' + e.message;
                 }
             },
             
             clear: function() {
+                log('Clearing markers');
                 if (this.current) {
                     this.current.remove();
                     this.current = null;
                 }
+                
+                // Clear history markers if any
+                this.history.forEach(marker => {
+                    if (marker) marker.remove();
+                });
+                this.history = [];
+                
                 this.lastCoords = null;
-                return 'Marker cleared';
+                return 'Markers cleared';
             },
             
             setAutoCenter: function(enabled) {
-                console.log('setAutoCenter called with value:', enabled);
-                console.log('typeof enabled:', typeof enabled);
+                log('Setting auto-center to: ' + enabled);
                 
-                // Convert string ""true""/""false"" to boolean if needed
+                // Convert string to boolean if needed
                 if (typeof enabled === 'string') {
                     enabled = (enabled.toLowerCase() === 'true');
                 }
                 
-                // Set the value with explicit boolean check
-                this.autoCenterEnabled = enabled === true;
+                // Set with explicit boolean check
+                window.OMNI.autoCenterEnabled = enabled === true;
                 
-                console.log('autoCenterEnabled set to:', this.autoCenterEnabled);
-                console.log('typeof autoCenterEnabled:', typeof this.autoCenterEnabled);
+                // Ensure map controls are enabled
+                const map = window.ShalazamLeafletMap;
+                if (map) {
+                    if (map.dragging) map.dragging.enable();
+                    if (map.zoomControl) map.zoomControl.enable();
+                    if (map.scrollWheelZoom) map.scrollWheelZoom.enable();
+                    if (map.doubleClickZoom) map.doubleClickZoom.enable();
+                    if (map.touchZoom) map.touchZoom.enable();
+                }
                 
-                return `Auto-center ${this.autoCenterEnabled ? 'enabled' : 'disabled'}`;
+                log('Auto-center set to: ' + window.OMNI.autoCenterEnabled);
+                return `Auto-center ${window.OMNI.autoCenterEnabled ? 'enabled' : 'disabled'}`;
+            },
+            
+            setKeepHistory: function(enabled) {
+                this.keepHistory = enabled === true;
+                return `History tracking ${this.keepHistory ? 'enabled' : 'disabled'}`;
             }
         };
 
-        console.log('gameMarker object initialized with auto-center:', window.gameMarker.autoCenterEnabled);
-        window.mapHandler = window.gameMarker;
+        // Also expose as window.gameMarker and window.mapHandler for compatibility
+        window.gameMarker = window.OMNI.gameMarker;
+        window.mapHandler = window.OMNI.gameMarker;
+        
+        log('Game marker system initialized');
     }
 
     // Start initialization
-    initGameMarker();
+    waitForMap();
 }
 
+// Initialize when document is ready
 if (document.readyState === 'loading') {
     console.log('Document still loading, waiting...');
     document.addEventListener('DOMContentLoaded', initializeSystem);
 } else {
     console.log('Document ready, initializing...');
     initializeSystem();
-}";
+}
+";
         }
 
 
