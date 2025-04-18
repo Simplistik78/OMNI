@@ -142,7 +142,7 @@ namespace OMNI.Services.Update
             // Check Version File
             try
             {
-                var versionFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, VersionManagerService.DiagnoseVersionSources());
+                var versionFilePath = VersionManagerService.GetVersionFilePath();
                 sb.AppendLine($"Version File Path: {versionFilePath}");
                 sb.AppendLine($"Version File Exists: {File.Exists(versionFilePath)}");
 

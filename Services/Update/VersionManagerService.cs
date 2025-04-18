@@ -26,22 +26,7 @@ namespace OMNI.Services
                 return _cachedVersion;
             }
 
-            // Try to get version from Assembly first
-            try
-            {
-                var version = Assembly.GetExecutingAssembly().GetName().Version;
-                if (version != null)
-                {
-                    _cachedVersion = $"{version.Major}.{version.Minor}.{version.Build}";
-                    return _cachedVersion;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error getting assembly version: {ex.Message}");
-            }
-
-            // Try to get version from version file
+            // 1. Try to get version from version file FIRST (highest priority)
             try
             {
                 var versionFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, VERSION_FILE);
@@ -52,6 +37,7 @@ namespace OMNI.Services
                     if (versionInfo != null && !string.IsNullOrEmpty(versionInfo.Version))
                     {
                         _cachedVersion = versionInfo.Version;
+                        Debug.WriteLine($"Using version from file: {_cachedVersion}");
                         return _cachedVersion;
                     }
                 }
@@ -61,11 +47,32 @@ namespace OMNI.Services
                 Debug.WriteLine($"Error reading version file: {ex.Message}");
             }
 
-            // Fallback to AboutDialog method (legacy)
+            // 2. Try to get version from Entry Assembly (the main EXE) instead of calling assembly
+            try
+            {
+                // This gets the main application assembly, not the calling library
+                var version = Assembly.GetEntryAssembly()?.GetName().Version;
+                if (version != null)
+                {
+                    _cachedVersion = $"{version.Major}.{version.Minor}.{version.Build}";
+                    Debug.WriteLine($"Using version from entry assembly: {_cachedVersion}");
+                    return _cachedVersion;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error getting entry assembly version: {ex.Message}");
+            }
+
+            // 3. Fallback to AboutDialog method as last resort
             _cachedVersion = GetAppVersion.FromAboutDialog();
+            Debug.WriteLine($"Using version from AboutDialog: {_cachedVersion}");
             return _cachedVersion;
         }
-
+        public static string GetVersionFilePath()
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, VERSION_FILE);
+        }
         /// <summary>
         /// Updates the version file with the new version after a successful update
         /// </summary>
@@ -120,18 +127,7 @@ namespace OMNI.Services
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("Version Source Diagnosis:");
 
-            // Check Assembly Version
-            try
-            {
-                var version = Assembly.GetExecutingAssembly().GetName().Version;
-                sb.AppendLine($"Assembly Version: {(version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "NULL")}");
-            }
-            catch (Exception ex)
-            {
-                sb.AppendLine($"Assembly Version Error: {ex.Message}");
-            }
-
-            // Check Version File
+            // Check Version File first (highest priority)
             try
             {
                 var versionFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, VERSION_FILE);
@@ -151,6 +147,28 @@ namespace OMNI.Services
             catch (Exception ex)
             {
                 sb.AppendLine($"Version File Error: {ex.Message}");
+            }
+
+            // Check Entry Assembly Version
+            try
+            {
+                var version = Assembly.GetEntryAssembly()?.GetName().Version;
+                sb.AppendLine($"Entry Assembly Version: {(version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "NULL")}");
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"Entry Assembly Version Error: {ex.Message}");
+            }
+
+            // Check Executing Assembly Version
+            try
+            {
+                var version = Assembly.GetExecutingAssembly().GetName().Version;
+                sb.AppendLine($"Executing Assembly Version: {(version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "NULL")}");
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"Executing Assembly Version Error: {ex.Message}");
             }
 
             // Check AboutDialog Version
