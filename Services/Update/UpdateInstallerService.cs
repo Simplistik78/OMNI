@@ -25,7 +25,11 @@ namespace OMNI.Services.Update
         public event EventHandler<bool>? UpdateCompleted;
         public event EventHandler<UpdateErrorEventArgs>? UpdateError;
 
-
+        public class VersionInfo
+        {
+            public string Version { get; set; } = string.Empty;
+            public DateTime UpdatedOn { get; set; }
+        }
         public UpdateInstallerService()
         {
             _appDirectory = AppDomain.CurrentDomain.BaseDirectory;
@@ -128,6 +132,24 @@ namespace OMNI.Services.Update
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("Version Source Diagnosis:");
 
+            // Check version.txt override file first
+            try
+            {
+                var versionTxtPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "version.txt");
+                sb.AppendLine($"Version.txt Path: {versionTxtPath}");
+                sb.AppendLine($"Version.txt Exists: {File.Exists(versionTxtPath)}");
+
+                if (File.Exists(versionTxtPath))
+                {
+                    var versionText = File.ReadAllText(versionTxtPath).Trim();
+                    sb.AppendLine($"Version.txt Content: {versionText}");
+                }
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"Version.txt Error: {ex.Message}");
+            }
+
             // Check Assembly Version
             try
             {
@@ -137,6 +159,17 @@ namespace OMNI.Services.Update
             catch (Exception ex)
             {
                 sb.AppendLine($"Assembly Version Error: {ex.Message}");
+            }
+
+            // Check Entry Assembly Version (added for better diagnostics)
+            try
+            {
+                var entryVersion = Assembly.GetEntryAssembly()?.GetName().Version;
+                sb.AppendLine($"Entry Assembly Version: {(entryVersion != null ? $"{entryVersion.Major}.{entryVersion.Minor}.{entryVersion.Build}" : "NULL")}");
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"Entry Assembly Version Error: {ex.Message}");
             }
 
             // Check Version File
@@ -151,10 +184,16 @@ namespace OMNI.Services.Update
                     var json = File.ReadAllText(versionFilePath);
                     sb.AppendLine($"Version File Content: {json}");
 
-                    // Diagnostic before updating version file
-                    var versionBeforeUpdate = VersionManagerService.DiagnoseVersionSources();
-                    UpdateLoggerService.LogInfo("Version diagnosis before update:");
-                    UpdateLoggerService.LogInfo(versionBeforeUpdate);
+                    try
+                    {
+                        var versionInfo = JsonSerializer.Deserialize<VersionInfo>(json);
+                        sb.AppendLine($"Parsed Version: {(versionInfo != null ? versionInfo.Version : "NULL")}");
+                        sb.AppendLine($"Updated On: {(versionInfo != null ? versionInfo.UpdatedOn.ToString() : "NULL")}");
+                    }
+                    catch (Exception ex)
+                    {
+                        sb.AppendLine($"Version File Parse Error: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -496,6 +535,19 @@ namespace OMNI.Services.Update
                     if (Directory.Exists(extractPath))
                     {
                         Directory.Delete(extractPath, true);
+                    }
+
+                    // Create version.txt file to fix version detection issues in existing installations
+                    try
+                    {
+                        var versionTxtPath = Path.Combine(_appDirectory, "version.txt");
+                        File.WriteAllText(versionTxtPath, newVersion);
+                        UpdateLoggerService.LogInfo($"Created version.txt with version {newVersion} to fix version detection");
+                    }
+                    catch (Exception ex)
+                    {
+                        UpdateLoggerService.LogWarning($"Failed to create version.txt file: {ex.Message}");
+                        // Continue with update even if this fails
                     }
 
                     // Diagnostic before updating version file

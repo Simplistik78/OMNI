@@ -11,9 +11,9 @@
 		<NoWarn>MSB3277</NoWarn>
 		<ApplicationIcon>PanIcon.ico</ApplicationIcon>
 		<!-- Add version information -->
-		<Version>1.5.10</Version>
-		<AssemblyVersion>1.5.10</AssemblyVersion>
-		<FileVersion>1.5.10</FileVersion>
+		<Version>1.5.11</Version>
+		<AssemblyVersion>1.5.11</AssemblyVersion>
+		<FileVersion>1.5.11</FileVersion>
 		<Authors>OMNI Project</Authors>
 		<Company>OMNI Project</Company>
 		<Copyright>Copyright © 2024-2025 OMNI Project</Copyright>

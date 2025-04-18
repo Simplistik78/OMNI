@@ -26,7 +26,27 @@ namespace OMNI.Services
                 return _cachedVersion;
             }
 
-            // 1. Try to get version from version file FIRST (highest priority)
+            // 1. Check for version.txt override file first (highest priority) added to fix the update loop bug from v1.4.9
+            try
+            {
+                var versionTxtPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "version.txt");
+                if (File.Exists(versionTxtPath))
+                {
+                    var versionText = File.ReadAllText(versionTxtPath).Trim();
+                    if (!string.IsNullOrEmpty(versionText))
+                    {
+                        _cachedVersion = versionText;
+                        Debug.WriteLine($"Using version from version.txt: {_cachedVersion}");
+                        return _cachedVersion;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error reading version.txt: {ex.Message}");
+            }
+
+            // 2. Try version file (second priority)
             try
             {
                 var versionFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, VERSION_FILE);
@@ -47,10 +67,9 @@ namespace OMNI.Services
                 Debug.WriteLine($"Error reading version file: {ex.Message}");
             }
 
-            // 2. Try to get version from Entry Assembly (the main EXE) instead of calling assembly
+            // 3. Try Entry Assembly version
             try
             {
-                // This gets the main application assembly, not the calling library
                 var version = Assembly.GetEntryAssembly()?.GetName().Version;
                 if (version != null)
                 {
@@ -64,7 +83,23 @@ namespace OMNI.Services
                 Debug.WriteLine($"Error getting entry assembly version: {ex.Message}");
             }
 
-            // 3. Fallback to AboutDialog method as last resort
+            // 4. Try Executing Assembly version
+            try
+            {
+                var version = Assembly.GetExecutingAssembly().GetName().Version;
+                if (version != null)
+                {
+                    _cachedVersion = $"{version.Major}.{version.Minor}.{version.Build}";
+                    Debug.WriteLine($"Using version from executing assembly: {_cachedVersion}");
+                    return _cachedVersion;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error getting executing assembly version: {ex.Message}");
+            }
+
+            // 5. Fallback to AboutDialog method
             _cachedVersion = GetAppVersion.FromAboutDialog();
             Debug.WriteLine($"Using version from AboutDialog: {_cachedVersion}");
             return _cachedVersion;
