@@ -33,7 +33,7 @@ public partial class MainForm : Form
     private int _currentMapId = 1; // Default to world map
     private readonly ClipboardMonitorService _clipboardService;
     private bool _isDarkMode = true;
-    private CheckBox _autoCenterCheckBox;
+    private CheckBox? _autoCenterCheckBox;
 
     // UI Controls initialized directly
     private readonly Panel _controlPanel = new();
@@ -52,7 +52,7 @@ public partial class MainForm : Form
     private readonly System.Windows.Forms.Timer _captureTimer = new();
     private readonly TestCoordinateService _testService;
     private readonly Button _testModeButton;
-    private ToolStripMenuItem _autoCenterMenuItem;
+    private ToolStripMenuItem? _autoCenterMenuItem;
 
     public MainForm(IOCRService ocrService, SettingsService settingsService)
     {
@@ -480,8 +480,11 @@ public partial class MainForm : Form
             _compactUIButton.ForeColor = Color.White;
 
             // Auto-center checkbox
-            _autoCenterCheckBox.ForeColor = Color.White;
-            _autoCenterCheckBox.BackColor = Color.FromArgb(50, 50, 55);
+            if (_autoCenterCheckBox != null)
+            {
+                _autoCenterCheckBox.ForeColor = Color.White;
+                _autoCenterCheckBox.BackColor = Color.FromArgb(50, 50, 55);
+            }
 
             foreach (Control control in _controlPanel.Controls)
             {
@@ -554,8 +557,11 @@ public partial class MainForm : Form
             _compactUIButton.ForeColor = Color.White;
 
             // Auto-center checkbox
-            _autoCenterCheckBox.ForeColor = Color.Black;
-            _autoCenterCheckBox.BackColor = SystemColors.Control;
+            if (_autoCenterCheckBox != null)
+            {
+                _autoCenterCheckBox.ForeColor = Color.Black;
+                _autoCenterCheckBox.BackColor = SystemColors.Control;
+            }
 
             // Update form elements back to light mode
             foreach (Control control in _controlPanel.Controls)
@@ -1124,13 +1130,16 @@ public partial class MainForm : Form
             settings.AutoCenterMap = autoCenterMenuItem.Checked;
             _settingsService.SaveSettings(settings);
 
-            _autoCenterCheckBox.Checked = autoCenterMenuItem.Checked;
+            if (_autoCenterCheckBox != null)
+            {
+                _autoCenterCheckBox.Checked = autoCenterMenuItem.Checked;
+            }
 
             await _mapViewerService.SetAutoCenterAsync(autoCenterMenuItem.Checked);
             _statusLabel.Text = $"Map auto-centering {(autoCenterMenuItem.Checked ? "enabled" : "disabled")}";
         };
 
-        // Menu items
+        // Menu items (shown)
         contextMenu.Items.AddRange(new ToolStripItem[] {
         mapMenu,
         new ToolStripSeparator(),
@@ -1139,7 +1148,7 @@ public partial class MainForm : Form
         autoCenterMenuItem,
         new ToolStripSeparator(),
         new ToolStripMenuItem("Reset Position", null, (s, e) => ResetPosition()),
-        new ToolStripMenuItem("Show Hotkeys", null, (s, e) => ShowHotkeys()),
+        new ToolStripMenuItem("Show Hotkeys (Disabled)", null, (s, e) => ShowHotkeys()),
         new ToolStripSeparator(),
         new ToolStripMenuItem("Check for Updates", null, async (s, e) => await CheckForUpdatesManually())
     });
@@ -1230,8 +1239,24 @@ public partial class MainForm : Form
             _statusLabel.Text = "Initializing map...";
             await _mapViewerService.WaitForInitializationAsync();
 
-            // Apply auto-center setting after map is initialized
-            await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+            // Make sure to load the auto-center setting
+            bool autoCenter = _settingsService.CurrentSettings.AutoCenterMap;
+            Debug.WriteLine($"MainForm loading with AutoCenterMap: {autoCenter}");
+
+            // Apply the setting to the map
+            await _mapViewerService.SetAutoCenterAsync(autoCenter);
+            Debug.WriteLine($"Applied AutoCenterMap setting to map: {autoCenter}");
+
+            // Update UI elements to match the setting
+            if (_autoCenterCheckBox != null)
+            {
+                _autoCenterCheckBox.Checked = autoCenter;
+            }
+
+            if (_autoCenterMenuItem != null)
+            {
+                _autoCenterMenuItem.Checked = autoCenter;
+            }
 
             _statusLabel.Text = "Ready";
 
@@ -1269,7 +1294,10 @@ public partial class MainForm : Form
             _isDarkMode = settings.IsDarkMode;
 
             // Load auto-center setting
-            _autoCenterCheckBox.Checked = settings.AutoCenterMap;
+            if (_autoCenterCheckBox != null)
+            {
+                _autoCenterCheckBox.Checked = settings.AutoCenterMap;
+            }
 
             // Load MainForm settings
             if (settings.MainFormSize.Width > 0 && settings.MainFormSize.Height > 0)
@@ -1322,7 +1350,10 @@ public partial class MainForm : Form
         }
 
         // Save auto-center setting
-        settings.AutoCenterMap = _autoCenterCheckBox.Checked;
+        if (_autoCenterCheckBox != null)
+        {
+            settings.AutoCenterMap = _autoCenterCheckBox.Checked;
+        }
 
         // Save dark mode setting
         settings.IsDarkMode = _isDarkMode;

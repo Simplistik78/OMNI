@@ -211,8 +211,26 @@ public partial class CompactUIForm : Form, ICaptureForm
             // Wait for map initialization before proceeding
             await _mapViewerService.WaitForInitializationAsync();
 
-            // Apply auto-center setting after map is initialized
-            await _mapViewerService.SetAutoCenterAsync(_settingsService.CurrentSettings.AutoCenterMap);
+            // Make sure to load the auto-center setting
+            bool autoCenter = _settingsService.CurrentSettings.AutoCenterMap;
+            Debug.WriteLine($"CompactUIForm loading with AutoCenterMap: {autoCenter}");
+
+            // Apply auto-center setting from saved settings
+            await _mapViewerService.SetAutoCenterAsync(autoCenter);
+            Debug.WriteLine($"Applied AutoCenterMap setting to map: {autoCenter}");
+
+            // Update context menu to reflect setting
+            if (_controlStrip.ContextMenuStrip != null)
+            {
+                foreach (var item in _controlStrip.ContextMenuStrip.Items)
+                {
+                    if (item is ToolStripMenuItem menuItem && menuItem.Text == "Auto-Center Map for Compact UI")
+                    {
+                        menuItem.Checked = autoCenter;
+                        break;
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -809,6 +827,7 @@ public partial class CompactUIForm : Form, ICaptureForm
             {
                 foreach (var item in _controlStrip.ContextMenuStrip.Items)
                 {
+                    
                     if (item is ToolStripMenuItem menuItem && menuItem.Text == "Auto-Center Map")
                     {
                         settings.AutoCenterMap = menuItem.Checked;

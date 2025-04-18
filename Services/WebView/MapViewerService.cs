@@ -371,7 +371,7 @@ html {
 }
 " : string.Empty;
 
-            
+
             return @"
 // Don't reinitialize if already done
 if (window.markerSystemInitialized) {

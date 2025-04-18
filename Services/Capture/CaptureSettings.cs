@@ -36,12 +36,14 @@ public class SettingsService
 {
     private readonly string _settingsPath;
     private Settings _currentSettings;
+    private bool _autoCenterMap = true;
 
     public event EventHandler<Settings>? SettingsChanged;
 
     public SettingsService(string settingsPath = "settings.json")
     {
         _settingsPath = settingsPath;
+        Debug.WriteLine($"Settings file path: {Path.GetFullPath(_settingsPath)}");
         _currentSettings = LoadSettings();
     }
 
@@ -54,9 +56,10 @@ public class SettingsService
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
             {
                 WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault
+                
             });
             File.WriteAllText(_settingsPath, json);
+            Debug.WriteLine($"Settings saved with AutoCenterMap: {settings.AutoCenterMap}");
             _currentSettings = settings;
             SettingsChanged?.Invoke(this, settings);
         }
@@ -65,7 +68,19 @@ public class SettingsService
             Debug.WriteLine($"Error saving settings: {ex.Message}");
         }
     }
-
+    public bool AutoCenterMap
+    {
+        get
+        {
+            Debug.WriteLine($"[GET] AutoCenterMap value: {_autoCenterMap}");
+            return _autoCenterMap;
+        }
+        set
+        {
+            Debug.WriteLine($"[SET] AutoCenterMap changing from {_autoCenterMap} to {value}");
+            _autoCenterMap = value;
+        }
+    }
     private Settings LoadSettings()
     {
         try
@@ -73,13 +88,19 @@ public class SettingsService
             if (File.Exists(_settingsPath))
             {
                 var json = File.ReadAllText(_settingsPath);
-                return JsonSerializer.Deserialize<Settings>(json) ?? new Settings();
+                Debug.WriteLine($"[LOAD] Settings content: {json}");
+
+                var settings = JsonSerializer.Deserialize<Settings>(json) ?? new Settings();
+                Debug.WriteLine($"[LOAD] Deserialized AutoCenterMap: {settings.AutoCenterMap}");
+                return settings;
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error loading settings: {ex.Message}");
+            Debug.WriteLine($"[ERROR] Loading settings: {ex.Message}");
         }
+
+        Debug.WriteLine("[LOAD] Creating new default settings");
         return new Settings();
     }
 
