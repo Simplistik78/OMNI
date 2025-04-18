@@ -128,7 +128,7 @@ namespace OMNI.Services.Update
             using var doc = JsonDocument.Parse(content);
             var root = doc.RootElement;
 
-            // Extract version tag
+            // Extract version tag and basic info
             string tagName = root.GetProperty("tag_name").GetString() ?? "";
             string releaseUrl = root.GetProperty("html_url").GetString() ?? "";
             string releaseNotes = root.GetProperty("body").GetString() ?? "";
@@ -139,22 +139,40 @@ namespace OMNI.Services.Update
             string latestVersion = NormalizeVersionFromTag(tagName);
             Debug.WriteLine($"Normalized version: {latestVersion}");
 
-            if (IsNewVersionAvailable(_currentVersion, latestVersion))
+            
+            string? zipAssetUrl = null;
+
+            if (root.TryGetProperty("assets", out var assets))
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    string? assetName = asset.GetProperty("name").GetString();
+                    if (!string.IsNullOrEmpty(assetName) && assetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        zipAssetUrl = asset.GetProperty("browser_download_url").GetString();
+                        Debug.WriteLine($"Found .zip asset: {zipAssetUrl}");
+                        break;
+                    }
+                }
+            }
+
+            if (IsNewVersionAvailable(_currentVersion, latestVersion) && !string.IsNullOrEmpty(zipAssetUrl))
             {
                 Debug.WriteLine($"New version available: {latestVersion}");
                 UpdateAvailable?.Invoke(this, new UpdateAvailableEventArgs(
                     latestVersion,
-                    releaseUrl,
+                    zipAssetUrl,    // use the real .zip binary asset URL
                     releaseNotes
                 ));
             }
             else
             {
-                Debug.WriteLine("Application is up to date");
+                Debug.WriteLine("Application is up to date or no valid release asset found");
             }
 
             return Task.CompletedTask;
         }
+
 
         private string NormalizeVersionFromTag(string tagName)
         {
