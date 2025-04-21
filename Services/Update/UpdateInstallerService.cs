@@ -223,6 +223,7 @@ namespace OMNI.Services.Update
             {
                 UpdateLoggerService.LogInfo("Downloading update package...");
                 OnProgressChanged("Downloading update package...");
+                UpdateLoggerService.LogInfo($"Download URL: {downloadUrl}"); // Add this to log the exact URL
 
                 string zipPath = Path.Combine(_tempDirectory, $"{_appName}_update.zip");
 
@@ -235,6 +236,19 @@ namespace OMNI.Services.Update
                     // Download with progress reporting
                     try
                     {
+                        // First check if the URL exists with a HEAD request
+                        var headRequest = new HttpRequestMessage(HttpMethod.Head, downloadUrl);
+                        var headResponse = await httpClient.SendAsync(headRequest);
+
+                        if (!headResponse.IsSuccessStatusCode)
+                        {
+                            string errorMsg = $"URL validation failed: {headResponse.StatusCode} - {headResponse.ReasonPhrase}";
+                            UpdateLoggerService.LogError(errorMsg);
+                            _lastError = errorMsg;
+                            return string.Empty;
+                        }
+
+                        // Then proceed with the download
                         using (var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
                         {
                             if (!response.IsSuccessStatusCode)
@@ -528,16 +542,25 @@ namespace OMNI.Services.Update
 
                     UpdateLoggerService.LogInfo($"Update partially applied. {pendingUpdates.Count} files will be updated after restart.");
                     OnProgressChanged($"Update partially applied. {pendingUpdates.Count} files will be updated after restart.");
+
+                    // IMPORTANT FIX: DO NOT delete the extract directory if there are pending updates
+                    // It needs to persist until the application restarts and can complete the pending updates
+                    UpdateLoggerService.LogInfo("Preserving extraction directory for pending updates after restart");
                 }
                 else
                 {
-                    // Delete extract directory as it's no longer needed
+                    // Only delete extract directory if there are no pending updates
                     if (Directory.Exists(extractPath))
                     {
                         Directory.Delete(extractPath, true);
+                        UpdateLoggerService.LogInfo("Cleaned up extraction directory as no pending updates remain");
                     }
 
-                    // Create version.txt file to fix version detection issues in existing installations
+                    // CRITICAL FIX FOR v1.4.9 UPDATE ISSUES: 
+                    // This creates a simple text file with just the version number that will be checked first
+                    // in the version detection process, overriding any discrepancies between JSON and assembly versions.
+                    // This is particularly important for users upgrading from v1.4.9 where the assembly version 
+                    // might not update properly but we still need accurate version detection.
                     try
                     {
                         var versionTxtPath = Path.Combine(_appDirectory, "version.txt");
@@ -596,89 +619,281 @@ namespace OMNI.Services.Update
                 }
 
                 UpdateLoggerService.LogInfo("Completing pending updates from previous installation...");
-                OnProgressChanged("Completing pending updates from previous installation...");
 
-                // Read pending updates info
-                var pendingJson = File.ReadAllText(pendingPath);
-                var pendingData = System.Text.Json.JsonSerializer.Deserialize<dynamic>(pendingJson);
-                if (pendingData is null ||
-                    pendingData.ExtractPath is null ||
-                    pendingData.Version is null ||
-                    pendingData.Updates is null)
+                try
                 {
-                    string errorMsg = "Pending update data is invalid.";
-                    UpdateLoggerService.LogError(errorMsg);
-                    OnProgressChanged(errorMsg);
-                    return false;
-                }
+                    // Read the pending updates file
+                    string pendingJson = await File.ReadAllTextAsync(pendingPath);
 
-                var extractPath = (string)pendingData.ExtractPath;
-                var newVersion = (string)pendingData.Version;
-                var updates = ((System.Text.Json.JsonElement)pendingData.Updates).EnumerateArray()
-                    .Select(e => e.GetString())
-                    .Where(s => !string.IsNullOrEmpty(s))
-                    .ToList();
-
-                // Apply pending updates
-                await Task.Run(() =>
-                {
-                    foreach (var relativePath in updates)
+                    // Parse the JSON document
+                    using (JsonDocument doc = JsonDocument.Parse(pendingJson))
                     {
-                        if (string.IsNullOrEmpty(relativePath)) continue;
+                        JsonElement root = doc.RootElement;
 
-                        var sourcePath = Path.Combine(extractPath, relativePath);
-                        var targetPath = Path.Combine(_appDirectory, relativePath);
-
-                        if (File.Exists(sourcePath))
+                        // Get required properties
+                        string? extractPath = null;
+                        if (root.TryGetProperty("ExtractPath", out JsonElement extractElement))
                         {
-                            var targetDir = Path.GetDirectoryName(targetPath);
-                            if (!string.IsNullOrEmpty(targetDir))
+                            extractPath = extractElement.GetString();
+                        }
+
+                        string? newVersion = null;
+                        if (root.TryGetProperty("Version", out JsonElement versionElement))
+                        {
+                            newVersion = versionElement.GetString();
+                        }
+
+                        List<string> updates = new List<string>();
+                        if (root.TryGetProperty("Updates", out JsonElement updatesElement) &&
+                            updatesElement.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (JsonElement item in updatesElement.EnumerateArray())
                             {
-                                Directory.CreateDirectory(targetDir);
+                                string? path = item.GetString();
+                                if (!string.IsNullOrEmpty(path))
+                                {
+                                    updates.Add(path);
+                                }
+                            }
+                        }
+
+                        // Check if the required information is available
+                        if (string.IsNullOrEmpty(extractPath) || updates.Count == 0)
+                        {
+                            UpdateLoggerService.LogError("Pending update data is invalid or incomplete");
+                            await Task.Run(() => File.Delete(pendingPath));
+                            return false;
+                        }
+
+                        // Check if the extract directory exists
+                        if (!Directory.Exists(extractPath))
+                        {
+                            UpdateLoggerService.LogError($"Extract directory not found: {extractPath}");
+                            await Task.Run(() => File.Delete(pendingPath));
+                            return false;
+                        }
+
+                        // Handle executable updates with a batch file
+                        if (updates.Any(path => path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            // Create a batch file to handle executable updates after the application exits
+                            string batchPath = Path.Combine(_appDirectory, "complete_update.bat");
+
+                            using (StreamWriter writer = new StreamWriter(batchPath))
+                            {
+                                writer.WriteLine("@echo off");
+                                writer.WriteLine("echo OMNI Update - Completing installation...");
+                                writer.WriteLine("echo Waiting for application to exit completely...");
+                                writer.WriteLine("timeout /t 2 > nul");
+
+                                // Find where OMNI.exe is in the extract folder - search recursively
+                                writer.WriteLine("echo Locating updated files...");
+
+                                // Search for OMNI.exe in the extract directory recursively
+                                writer.WriteLine($"FOR /R \"{extractPath}\" %%F IN (OMNI.exe) DO (");
+                                writer.WriteLine("  echo Found updated OMNI.exe: %%F");
+                                writer.WriteLine($"  echo Copying to main application directory: {_appDirectory}");
+                                writer.WriteLine($"  copy /Y \"%%F\" \"{Path.Combine(_appDirectory, "OMNI.exe")}\"");
+                                writer.WriteLine(")");
+
+                                // Also look for net8.0-windows folder specifically and copy its contents
+                                writer.WriteLine($"IF EXIST \"{extractPath}\\net8.0-windows\" (");
+                                writer.WriteLine($"  echo Found net8.0-windows folder, copying contents to main directory");
+                                writer.WriteLine($"  xcopy \"{extractPath}\\net8.0-windows\\*.*\" \"{_appDirectory}\" /E /Y");
+                                writer.WriteLine(")");
+
+                                // Also look for Release\\net8.0-windows folder specifically
+                                writer.WriteLine($"IF EXIST \"{extractPath}\\Release\\net8.0-windows\" (");
+                                writer.WriteLine($"  echo Found Release\\net8.0-windows folder, copying contents to main directory");
+                                writer.WriteLine($"  xcopy \"{extractPath}\\Release\\net8.0-windows\\*.*\" \"{_appDirectory}\" /E /Y");
+                                writer.WriteLine(")");
+
+                                // Create version.txt file to ensure correct version detection
+                                if (!string.IsNullOrEmpty(newVersion))
+                                {
+                                    writer.WriteLine($"echo Creating version.txt with version {newVersion}...");
+                                    writer.WriteLine($"echo {newVersion} > \"{Path.Combine(_appDirectory, "version.txt")}\"");
+                                }
+
+                                // Clean up
+                                writer.WriteLine("echo Cleaning up temporary files...");
+                                writer.WriteLine($"rmdir /S /Q \"{extractPath}\"");
+                                writer.WriteLine($"del \"{pendingPath}\"");
+
+                                // Start the application again
+                                writer.WriteLine("echo Update completed successfully!");
+                                writer.WriteLine($"start \"\" \"{Path.Combine(_appDirectory, "OMNI.exe")}\"");
+
+                                // Self-delete the batch file
+                                writer.WriteLine("echo Removing batch file...");
+                                writer.WriteLine("del %0");
                             }
 
-                            if (File.Exists(targetPath))
+                            // Make the batch file run after this process exits
+                            UpdateLoggerService.LogInfo("Created batch file to complete executable updates after restart");
+
+                            // Start the batch file and then exit the application
+                            ProcessStartInfo startInfo = new ProcessStartInfo
                             {
-                                File.SetAttributes(targetPath, FileAttributes.Normal);
+                                FileName = "cmd.exe",
+                                Arguments = $"/c \"{batchPath}\"",
+                                WindowStyle = ProcessWindowStyle.Hidden,
+                                CreateNoWindow = true,
+                                UseShellExecute = true  // Use shell execute to avoid blocking
+                            };
+
+                            Process.Start(startInfo);
+
+                            // Exit the application to allow the batch file to work
+                            UpdateLoggerService.LogInfo("Exiting application to complete update...");
+                            Environment.Exit(0);
+
+                            // This will never be reached due to the Environment.Exit
+                            return true;
+                        }
+                        else
+                        {
+                            // Handle non-executable updates
+                            UpdateLoggerService.LogInfo("Processing non-executable pending updates...");
+
+                            // Apply all pending updates
+                            foreach (var relativePath in updates)
+                            {
+                                // Find the source file
+                                string sourcePath = FindSourceFile(extractPath, relativePath);
+                                if (string.IsNullOrEmpty(sourcePath))
+                                {
+                                    UpdateLoggerService.LogWarning($"Source file not found for: {relativePath}");
+                                    continue;
+                                }
+
+                                // Determine the target path
+                                string targetPath = DetermineTargetPath(_appDirectory, relativePath);
+
+                                // Create target directory if needed
+                                string? targetDir = Path.GetDirectoryName(targetPath);
+                                if (!string.IsNullOrEmpty(targetDir))
+                                {
+                                    Directory.CreateDirectory(targetDir);
+                                }
+
+                                // Copy the file
+                                if (File.Exists(targetPath))
+                                {
+                                    File.SetAttributes(targetPath, FileAttributes.Normal);
+                                }
+
+                                File.Copy(sourcePath, targetPath, true);
+                                UpdateLoggerService.LogInfo($"Updated file: {Path.GetFileName(targetPath)}");
                             }
-                            File.Copy(sourcePath, targetPath, true);
+
+                            // Update version information
+                            if (!string.IsNullOrEmpty(newVersion))
+                            {
+                                UpdateLoggerService.LogInfo($"Setting version to {newVersion}");
+
+                                // Create version.txt file for reliable version detection
+                                try
+                                {
+                                    string versionTxtPath = Path.Combine(_appDirectory, "version.txt");
+                                    await File.WriteAllTextAsync(versionTxtPath, newVersion);
+                                    UpdateLoggerService.LogInfo($"Created version.txt with version {newVersion}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    UpdateLoggerService.LogWarning($"Failed to create version.txt: {ex.Message}");
+                                }
+
+                                // Update version file
+                                await Task.Run(() => VersionManagerService.UpdateVersionFile(newVersion));
+                                VersionManagerService.ClearVersionCache();
+                            }
+
+                            // Clean up
+                            await Task.Run(() => File.Delete(pendingPath));
+                            await Task.Run(() => Directory.Delete(extractPath, true));
+
+                            UpdateLoggerService.LogInfo("Pending updates completed successfully");
+                            return true;
                         }
                     }
-                });
-
-                // Clean up
-                File.Delete(pendingPath);
-                if (!string.IsNullOrEmpty(extractPath) && Directory.Exists(extractPath))
-                {
-                    Directory.Delete(extractPath, true);
                 }
-
-                // Diagnostic before updating version file
-                var versionBeforeUpdate = VersionManagerService.DiagnoseVersionSources();
-                UpdateLoggerService.LogInfo("Version diagnosis before completing pending updates:");
-                UpdateLoggerService.LogInfo(versionBeforeUpdate);
-
-                // Update the version file with the new version
-                bool versionUpdateSuccess = VersionManagerService.UpdateVersionFile(newVersion);
-                UpdateLoggerService.LogInfo($"Version file update success: {versionUpdateSuccess}");
-
-                // Clear the version cache to force reload from file
-                VersionManagerService.ClearVersionCache();
-
-                // Diagnostic after updating version file
-                var versionAfterUpdate = VersionManagerService.DiagnoseVersionSources();
-                UpdateLoggerService.LogInfo("Version diagnosis after completing pending updates:");
-                UpdateLoggerService.LogInfo(versionAfterUpdate);
-
-                UpdateLoggerService.LogInfo($"Pending updates completed. Application is now at version {newVersion}");
-                OnProgressChanged($"Pending updates completed. Application is now at version {newVersion}");
-                return true;
+                catch (Exception ex)
+                {
+                    UpdateLoggerService.LogError("Error processing pending updates", ex);
+                    try { await Task.Run(() => File.Delete(pendingPath)); } catch { }
+                    return false;
+                }
             }
             catch (Exception ex)
             {
-                UpdateLoggerService.LogError("Error completing pending updates", ex);
+                UpdateLoggerService.LogError("Error checking for pending updates", ex);
                 return false;
             }
+        }
+
+        // Helper methods for finding files
+        private string FindSourceFile(string extractPath, string relativePath)
+        {
+            // Check direct path
+            string directPath = Path.Combine(extractPath, relativePath);
+            if (File.Exists(directPath))
+            {
+                return directPath;
+            }
+
+            // Check without "Release\" prefix
+            if (relativePath.StartsWith("Release\\"))
+            {
+                string noReleasePath = Path.Combine(extractPath, relativePath.Substring("Release\\".Length));
+                if (File.Exists(noReleasePath))
+                {
+                    return noReleasePath;
+                }
+            }
+
+            // Look for OMNI.exe in the net8.0-windows folder
+            if (relativePath.EndsWith("OMNI.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                string netFolderPath = Path.Combine(extractPath, "net8.0-windows", "OMNI.exe");
+                if (File.Exists(netFolderPath))
+                {
+                    return netFolderPath;
+                }
+
+                string releaseNetFolderPath = Path.Combine(extractPath, "Release", "net8.0-windows", "OMNI.exe");
+                if (File.Exists(releaseNetFolderPath))
+                {
+                    return releaseNetFolderPath;
+                }
+            }
+
+            // Search recursively as a last resort
+            foreach (var file in Directory.GetFiles(extractPath, Path.GetFileName(relativePath), SearchOption.AllDirectories))
+            {
+                return file; // Return the first match
+            }
+
+            return string.Empty; // Not found
+        }
+
+        private string DetermineTargetPath(string appDirectory, string relativePath)
+        {
+            // For OMNI.exe, always put it in the main application directory
+            if (relativePath.EndsWith("OMNI.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.Combine(appDirectory, "OMNI.exe");
+            }
+
+            // Remove "Release\" prefix if present
+            string targetRelativePath = relativePath;
+            if (relativePath.StartsWith("Release\\"))
+            {
+                targetRelativePath = relativePath.Substring("Release\\".Length);
+            }
+
+            // Return the final target path
+            return Path.Combine(appDirectory, targetRelativePath);
         }
 
         /// <summary>
@@ -871,14 +1086,27 @@ namespace OMNI.Services.Update
             {
                 UpdateLoggerService.LogInfo("Cleaning up temporary files...");
 
+                // Check if there are pending updates
+                var pendingPath = Path.Combine(_appDirectory, "pending_updates.json");
+                bool hasPendingUpdates = File.Exists(pendingPath);
+
                 foreach (var file in Directory.GetFiles(_tempDirectory, "*.zip"))
                 {
                     File.Delete(file);
                 }
 
+                // Only clean up directories that are not the Extract directory if we have pending updates
                 foreach (var dir in Directory.GetDirectories(_tempDirectory))
                 {
-                    if (Directory.Exists(dir) && !Path.GetFileName(dir).Equals("Rollback", StringComparison.OrdinalIgnoreCase))
+                    if (hasPendingUpdates &&
+                        Path.GetFileName(dir).Equals("Extract", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Skip the Extract directory if we have pending updates
+                        UpdateLoggerService.LogInfo("Skipping Extract directory cleanup due to pending updates");
+                        continue;
+                    }
+
+                    if (Directory.Exists(dir))
                     {
                         Directory.Delete(dir, true);
                     }

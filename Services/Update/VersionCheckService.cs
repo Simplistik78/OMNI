@@ -80,33 +80,27 @@ namespace OMNI.Services.Update
 
             if (releases.Any())
             {
-                // Get the first non-draft release
                 foreach (var release in releases)
                 {
-                    // Skip draft releases
-                    if (release.TryGetProperty("draft", out var isDraftElement) &&
-                        isDraftElement.GetBoolean())
-                    {
+                    if (release.TryGetProperty("draft", out var isDraftElement) && isDraftElement.GetBoolean())
                         continue;
-                    }
 
                     string tagName = release.GetProperty("tag_name").GetString() ?? "";
-                    string releaseUrl = release.GetProperty("html_url").GetString() ?? "";
+                    string latestVersion = NormalizeVersionFromTag(tagName);
                     string releaseNotes = release.GetProperty("body").GetString() ?? "";
                     bool isPrerelease = release.GetProperty("prerelease").GetBoolean();
 
                     Debug.WriteLine($"Found release: {tagName}, IsPrerelease: {isPrerelease}");
-
-                    // Extract version from tag name
-                    string latestVersion = NormalizeVersionFromTag(tagName);
                     Debug.WriteLine($"Normalized version: {latestVersion}");
 
                     if (IsNewVersionAvailable(_currentVersion, latestVersion))
                     {
-                        Debug.WriteLine($"New version available: {latestVersion}");
+                        string zipAssetUrl = $"https://github.com/Simplistik78/OMNI/releases/download/{latestVersion}/OMNI_{latestVersion}.zip";
+                        Debug.WriteLine($"New version available: {latestVersion} — ZIP URL: {zipAssetUrl}");
+
                         UpdateAvailable?.Invoke(this, new UpdateAvailableEventArgs(
                             latestVersion,
-                            releaseUrl,
+                            zipAssetUrl,
                             releaseNotes
                         ));
                         break;
@@ -123,55 +117,60 @@ namespace OMNI.Services.Update
             return Task.CompletedTask;
         }
 
+
         private Task ProcessLatestReleaseResponse(string content)
         {
             using var doc = JsonDocument.Parse(content);
             var root = doc.RootElement;
 
-            // Extract version tag and basic info
             string tagName = root.GetProperty("tag_name").GetString() ?? "";
-            string releaseUrl = root.GetProperty("html_url").GetString() ?? "";
             string releaseNotes = root.GetProperty("body").GetString() ?? "";
+            string latestVersion = tagName.StartsWith("v") ? tagName.Substring(1) : tagName;
 
-            Debug.WriteLine($"Latest release tag: {tagName}");
-
-            // Normalize version from tag
-            string latestVersion = NormalizeVersionFromTag(tagName);
-            Debug.WriteLine($"Normalized version: {latestVersion}");
-
-            
             string? zipAssetUrl = null;
 
+            // Look for a .zip asset inside the "assets" array
             if (root.TryGetProperty("assets", out var assets))
             {
                 foreach (var asset in assets.EnumerateArray())
                 {
-                    string? assetName = asset.GetProperty("name").GetString();
+                    var assetName = asset.GetProperty("name").GetString();
                     if (!string.IsNullOrEmpty(assetName) && assetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                     {
                         zipAssetUrl = asset.GetProperty("browser_download_url").GetString();
-                        Debug.WriteLine($"Found .zip asset: {zipAssetUrl}");
+                        Debug.WriteLine($" Found downloadable asset: {zipAssetUrl}");
                         break;
                     }
                 }
             }
 
-            if (IsNewVersionAvailable(_currentVersion, latestVersion) && !string.IsNullOrEmpty(zipAssetUrl))
+            // Fallback: construct it if we didn’t find it explicitly
+            if (string.IsNullOrEmpty(zipAssetUrl))
             {
-                Debug.WriteLine($"New version available: {latestVersion}");
+                zipAssetUrl = $"https://github.com/Simplistik78/OMNI/releases/download/{latestVersion}/OMNI_{latestVersion}.zip";
+                Debug.WriteLine($" Asset not found in JSON, fallback constructed URL: {zipAssetUrl}");
+            }
+
+            // Compare versions
+            if (IsNewVersionAvailable(_currentVersion, latestVersion))
+            {
+                Debug.WriteLine($" New version available: {latestVersion}");
                 UpdateAvailable?.Invoke(this, new UpdateAvailableEventArgs(
                     latestVersion,
-                    zipAssetUrl,    // use the real .zip binary asset URL
+                    zipAssetUrl,
                     releaseNotes
                 ));
             }
             else
             {
-                Debug.WriteLine("Application is up to date or no valid release asset found");
+                Debug.WriteLine(" Application is up to date");
             }
 
             return Task.CompletedTask;
         }
+
+
+
 
 
         private string NormalizeVersionFromTag(string tagName)

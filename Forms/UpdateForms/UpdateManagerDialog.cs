@@ -404,14 +404,11 @@ namespace OMNI.Forms.UpdateForms
                 {
                     _isUpdating = true;
                     UpdateUIState();
-
-                    // Download URL from GitHub releases, this will continue to follow my current tag naming scheme.
-                    string downloadUrl = $"https://github.com/Simplistik78/OMNI/archive/refs/tags/v{_newVersion}.zip";
-
+                 
 
                     await Task.Run(async () =>
                     {
-                        await _updateService.InstallUpdateAsync(_newVersion, downloadUrl);
+                        await _updateService.InstallUpdateAsync(_newVersion, _releaseUrl);
                     });
                 }
             };
